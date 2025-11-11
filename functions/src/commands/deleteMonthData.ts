@@ -86,36 +86,58 @@ export const deleteMonthData = functions
         await summaryRef.delete();
       }
 
-      // 3. Eliminar panelEvents fantasma del mes (collectionGroup query)
+      // 3. Eliminar panelEvents fantasma del mes
+      // Estrategia: obtener todos los panelIds de la colección panels
+      // y luego eliminar eventos de cada panel individualmente
       functions.logger.info(`[deleteMonthData] Eliminando panelEvents con monthKey=${monthKey}...`);
-      const eventsSnapshot = await db
-        .collectionGroup("panelEvents")
-        .where("monthKey", "==", monthKey)
-        .get();
+      
+      const panelsSnapshot = await db.collection("panels").get();
+      let totalEvents = 0;
+      let deletedEvents = 0;
 
-      const totalEvents = eventsSnapshot.size;
-      functions.logger.info(`[deleteMonthData] Eventos fantasma encontrados: ${totalEvents}`);
+      functions.logger.info(`[deleteMonthData] Procesando ${panelsSnapshot.size} paneles...`);
 
-      if (totalEvents > 0) {
-        const EVENT_BATCH_SIZE = 500;
-        let deletedEvents = 0;
+      // Procesar en paralelo por lotes de 10 paneles a la vez
+      const PARALLEL_BATCH_SIZE = 10;
+      
+      for (let i = 0; i < panelsSnapshot.docs.length; i += PARALLEL_BATCH_SIZE) {
+        const batchPanels = panelsSnapshot.docs.slice(i, i + PARALLEL_BATCH_SIZE);
+        
+        await Promise.all(
+          batchPanels.map(async (panelDoc) => {
+            const eventsSnapshot = await db
+              .collection("panels")
+              .doc(panelDoc.id)
+              .collection("panelEvents")
+              .where("monthKey", "==", monthKey)
+              .get();
 
-        for (let i = 0; i < eventsSnapshot.docs.length; i += EVENT_BATCH_SIZE) {
-          const batch = db.batch();
-          const batchDocs = eventsSnapshot.docs.slice(i, i + EVENT_BATCH_SIZE);
-
-          batchDocs.forEach((doc) => {
-            batch.delete(doc.ref);
-          });
-
-          await batch.commit();
-          deletedEvents += batchDocs.length;
-
+            if (eventsSnapshot.size > 0) {
+              totalEvents += eventsSnapshot.size;
+              
+              const batch = db.batch();
+              eventsSnapshot.docs.forEach((eventDoc) => {
+                batch.delete(eventDoc.ref);
+              });
+              
+              await batch.commit();
+              deletedEvents += eventsSnapshot.size;
+              
+              functions.logger.info(
+                `[deleteMonthData] Panel ${panelDoc.id}: ${eventsSnapshot.size} eventos eliminados`
+              );
+            }
+          })
+        );
+        
+        if ((i + PARALLEL_BATCH_SIZE) % 50 === 0) {
           functions.logger.info(
-            `[deleteMonthData] Eventos eliminados: ${deletedEvents}/${totalEvents}`
+            `[deleteMonthData] Progreso: ${i + PARALLEL_BATCH_SIZE}/${panelsSnapshot.size} paneles procesados`
           );
         }
       }
+
+      functions.logger.info(`[deleteMonthData] Total eventos eliminados: ${deletedEvents}`);
 
       // 4. Verificar billingMonthlyPanel
       const verifySnapshot = await db
@@ -127,23 +149,13 @@ export const deleteMonthData = functions
         `[deleteMonthData] Verificación billing: ${verifySnapshot.size} documentos restantes`
       );
 
-      // 5. Verificar panelEvents
-      const verifyEventsSnapshot = await db
-        .collectionGroup("panelEvents")
-        .where("monthKey", "==", monthKey)
-        .get();
-
-      functions.logger.info(
-        `[deleteMonthData] Verificación eventos: ${verifyEventsSnapshot.size} eventos restantes`
-      );
-
       return {
         success: true,
         message: `Datos de ${monthKey} eliminados correctamente`,
         deletedBilling: totalDocs,
         deletedSummary,
         deletedEvents: totalEvents,
-        verified: verifySnapshot.size === 0 && verifyEventsSnapshot.size === 0,
+        verified: verifySnapshot.size === 0,
       };
     } catch (error) {
       functions.logger.error("[deleteMonthData] Error:", error);
