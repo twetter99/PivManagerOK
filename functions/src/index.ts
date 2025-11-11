@@ -9,6 +9,10 @@ admin.initializeApp();
 export { setUserRole } from "./admin/setUserRole";
 export { importBaseMonth } from "./admin/importBaseMonth";
 export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
+export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
+export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
+export { cleanupDuplicatePanels } from "./commands/cleanupDuplicatePanels";
+export { deleteMonthData } from "./commands/deleteMonthData";
 
 // ============================================================================
 // COMANDOS (Paso 3 - Patrón Asíncrono)
