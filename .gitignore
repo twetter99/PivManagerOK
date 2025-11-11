@@ -39,3 +39,7 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Firebase service account credentials (NEVER COMMIT)
+*-firebase-adminsdk-*.json
+piv-manager-firebase-adminsdk-*.json
