@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Refresh Firebase Token</title>
+</head>
+<body>
+  <h1>Refrescar Token Firebase</h1>
+  <button id="refreshBtn">Refrescar Token y Custom Claims</button>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBqxn6r8EE8rKcXHX_vYZGKWvQKKQxM8XM",
+      authDomain: "piv-manager.firebaseapp.com",
+      projectId: "piv-manager",
+      storageBucket: "piv-manager.appspot.com",
+      messagingSenderId: "984787325363",
+      appId: "1:984787325363:web:3b34b5dad3c3fde846fbc6"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const output = document.getElementById('output');
+    const btn = document.getElementById('refreshBtn');
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        output.textContent = `✓ Usuario autenticado: ${user.email}\n\nHaz clic en el botón para refrescar el token...`;
+      } else {
+        output.textContent = '✗ No hay usuario autenticado. Ve a http://localhost:3000 e inicia sesión primero.';
+        btn.disabled = true;
+      }
+    });
+
+    btn.addEventListener('click', async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        output.textContent = '✗ No hay usuario autenticado';
+        return;
+      }
+
+      try {
+        output.textContent = '⏳ Refrescando token...';
+        
+        // Forzar refresh del token (esto traerá los nuevos Custom Claims)
+        const token = await user.getIdToken(true);
+        const idTokenResult = await user.getIdTokenResult();
+        
+        output.textContent = `✅ Token refrescado exitosamente!\n\n` +
+          `Usuario: ${user.email}\n` +
+          `UID: ${user.uid}\n\n` +
+          `Custom Claims:\n${JSON.stringify(idTokenResult.claims, null, 2)}\n\n` +
+          `Ahora recarga http://localhost:3000 (Ctrl+Shift+R)`;
+      } catch (error) {
+        output.textContent = `✗ Error: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>

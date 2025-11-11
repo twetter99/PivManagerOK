@@ -1,0 +1,19 @@
+{"users": [
+{
+  "localId": "SHUeQjtG1kRSW4MbiHEcmQGF3wk2",
+  "email": "twetter@gmail.com",
+  "emailVerified": true,
+  "displayName": "Luis Perez",
+  "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocJ6B69j_dwpRfDdrfRgXqd4k7u9xJEeyJo55AF7jNB_4wDJ4A=s96-c",
+  "lastSignedInAt": "1762672800458",
+  "createdAt": "1762275074872",
+  "providerUserInfo": [
+    {
+      "providerId": "google.com",
+      "rawId": "115991151753724512882",
+      "email": "twetter@gmail.com",
+      "displayName": "Luis Perez",
+      "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocJ6B69j_dwpRfDdrfRgXqd4k7u9xJEeyJo55AF7jNB_4wDJ4A=s96-c"
+    }
+  ]
+}]}

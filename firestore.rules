@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- FUNCIÓN AUXILIAR: SOLO AUTENTICADOS ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // --- FUNCIÓN AUXILIAR: SOLO BACKEND (Firebase Functions) ---
+    function isBackend() {
+      // Las Cloud Functions tienen request.auth == null pero acceden con Admin SDK
+      // Esta regla permite el acceso desde el backend mientras bloquea el cliente
+      return request.auth == null;
+    }
+    
+    // =============================================================================
+    // CACHÉ L1: billingMonthlyPanel (SOLO LECTURA PARA CLIENTES)
+    // =============================================================================
+    // El frontend puede leer esta colección para mostrar la lista de facturación mensual
+    match /billingMonthlyPanel/{documentId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Solo el backend escribe
+    }
+    
+    // =============================================================================
+    // CACHÉ L2: billingSummary (SOLO LECTURA PARA CLIENTES)
+    // =============================================================================
+    // El frontend puede leer esta colección para mostrar el dashboard/KPIs
+    match /billingSummary/{documentId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Solo el backend escribe
+    }
+    
+    // =============================================================================
+    // COLECCIÓN: panels (BLOQUEADA PARA EL CLIENTE)
+    // =============================================================================
+    // El cliente NO puede leer ni escribir directamente en la colección maestra
+    match /panels/{panelId} {
+      allow read, write: if false;
+      
+      // --- SUBCOLECCIÓN: panelEvents (BLOQUEADA PARA EL CLIENTE) ---
+      // Fuente de la verdad inmutable. Solo el backend escribe eventos.
+      match /panelEvents/{eventId} {
+        allow read, write: if false;
+      }
+    }
+    
+    // =============================================================================
+    // COLECCIÓN: panelCodes (BLOQUEADA PARA EL CLIENTE)
+    // =============================================================================
+    // Candado de unicidad para códigos de paneles. Solo el backend accede.
+    match /panelCodes/{codeId} {
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // COLECCIÓN: rates (BLOQUEADA PARA EL CLIENTE)
+    // =============================================================================
+    // Catálogo de tarifas. Solo el backend gestiona las tarifas.
+    match /rates/{rateId} {
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // REGLA POR DEFECTO: DENEGAR TODO
+    // =============================================================================
+    // Cualquier otra colección o documento no especificado está bloqueado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
