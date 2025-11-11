@@ -13,10 +13,14 @@ const DeleteMonthRequest = z.object({
  * Elimina TODOS los datos de facturación de un mes específico:
  * - billingMonthlyPanel (todos los paneles del mes)
  * - billingSummary (resumen del mes)
+ * - panelEvents fantasma (eventos con monthKey del mes que no deberían existir)
+ * 
+ * IMPORTANTE: Elimina eventos fantasma que causan cálculos incorrectos.
+ * Esto resuelve el problema de paneles mostrando "1 día" en lugar de "30 días".
  * 
  * @param data - { monthKey: "YYYY-MM" }
  * @param context - Contexto de autenticación
- * @returns { success: true, deletedBilling: number, deletedSummary: boolean }
+ * @returns { success: true, deletedBilling: number, deletedSummary: boolean, deletedEvents: number }
  */
 export const deleteMonthData = functions
   .region("europe-west1")
@@ -82,14 +86,55 @@ export const deleteMonthData = functions
         await summaryRef.delete();
       }
 
-      // 3. Verificar
+      // 3. Eliminar panelEvents fantasma del mes (collectionGroup query)
+      functions.logger.info(`[deleteMonthData] Eliminando panelEvents con monthKey=${monthKey}...`);
+      const eventsSnapshot = await db
+        .collectionGroup("panelEvents")
+        .where("monthKey", "==", monthKey)
+        .get();
+
+      const totalEvents = eventsSnapshot.size;
+      functions.logger.info(`[deleteMonthData] Eventos fantasma encontrados: ${totalEvents}`);
+
+      if (totalEvents > 0) {
+        const EVENT_BATCH_SIZE = 500;
+        let deletedEvents = 0;
+
+        for (let i = 0; i < eventsSnapshot.docs.length; i += EVENT_BATCH_SIZE) {
+          const batch = db.batch();
+          const batchDocs = eventsSnapshot.docs.slice(i, i + EVENT_BATCH_SIZE);
+
+          batchDocs.forEach((doc) => {
+            batch.delete(doc.ref);
+          });
+
+          await batch.commit();
+          deletedEvents += batchDocs.length;
+
+          functions.logger.info(
+            `[deleteMonthData] Eventos eliminados: ${deletedEvents}/${totalEvents}`
+          );
+        }
+      }
+
+      // 4. Verificar billingMonthlyPanel
       const verifySnapshot = await db
         .collection("billingMonthlyPanel")
         .where("monthKey", "==", monthKey)
         .get();
 
       functions.logger.info(
-        `[deleteMonthData] Verificación: ${verifySnapshot.size} documentos restantes`
+        `[deleteMonthData] Verificación billing: ${verifySnapshot.size} documentos restantes`
+      );
+
+      // 5. Verificar panelEvents
+      const verifyEventsSnapshot = await db
+        .collectionGroup("panelEvents")
+        .where("monthKey", "==", monthKey)
+        .get();
+
+      functions.logger.info(
+        `[deleteMonthData] Verificación eventos: ${verifyEventsSnapshot.size} eventos restantes`
       );
 
       return {
@@ -97,7 +142,8 @@ export const deleteMonthData = functions
         message: `Datos de ${monthKey} eliminados correctamente`,
         deletedBilling: totalDocs,
         deletedSummary,
-        verified: verifySnapshot.size === 0,
+        deletedEvents: totalEvents,
+        verified: verifySnapshot.size === 0 && verifyEventsSnapshot.size === 0,
       };
     } catch (error) {
       functions.logger.error("[deleteMonthData] Error:", error);
