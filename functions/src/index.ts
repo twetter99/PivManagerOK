@@ -8,6 +8,7 @@ admin.initializeApp();
 // ============================================================================
 export { setUserRole } from "./admin/setUserRole";
 export { importBaseMonth } from "./admin/importBaseMonth";
+export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
 
 // ============================================================================
 // COMANDOS (Paso 3 - Patrón Asíncrono)
