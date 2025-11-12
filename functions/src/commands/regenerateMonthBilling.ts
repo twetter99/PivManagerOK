@@ -112,12 +112,77 @@ export const regenerateMonthBilling = functions
         `[regenerateMonthBilling] Regeneración completada: ${processed}/${totalPanels} paneles procesados correctamente`
       );
 
-      // 5. Retornar resultado
+      // 5. Calcular billingSummary inmediatamente después de la regeneración
+      functions.logger.info(`[regenerateMonthBilling] Calculando billingSummary para ${monthKey}...`);
+      
+      const billingSnapshot = await db
+        .collection("billingMonthlyPanel")
+        .where("monthKey", "==", monthKey)
+        .get();
+
+      let totalImporteMes = 0;
+      let totalPanelesFacturables = 0;
+      let panelesActivos = 0;
+      let panelesParciales = 0;
+
+      for (const doc of billingSnapshot.docs) {
+        const data = doc.data();
+        const diasFacturables = data.totalDiasFacturables || 0;
+        const importe = data.totalImporte || 0;
+
+        totalImporteMes += importe;
+        
+        if (importe > 0) {
+          totalPanelesFacturables++;
+        }
+
+        if (diasFacturables >= 30) {
+          panelesActivos++;
+        } else if (diasFacturables > 0) {
+          panelesParciales++;
+        }
+      }
+
+      // Redondear a 2 decimales
+      totalImporteMes = Math.round(totalImporteMes * 100) / 100;
+
+      // Nota: totalEventos se calcula posteriormente de forma asíncrona por updateSummaryTask
+      const totalEventos = 0;
+
+      // Obtener isLocked actual si existe
+      const currentSummary = await db.collection("billingSummary").doc(monthKey).get();
+      const isLocked = currentSummary.exists ? currentSummary.data()!.isLocked || false : false;
+
+      // Guardar billingSummary
+      await db.collection("billingSummary").doc(monthKey).set({
+        monthKey,
+        totalImporteMes,
+        totalPanelesFacturables,
+        panelesActivos,
+        panelesParciales,
+        totalEventos,
+        isLocked,
+        updatedAt: admin.firestore.Timestamp.now(),
+        schemaVersion: 1,
+      });
+
+      functions.logger.info(
+        `[regenerateMonthBilling] billingSummary actualizado: ${totalImporteMes}€, ${totalPanelesFacturables} paneles`
+      );
+
+      // 6. Retornar resultado
       return {
         success: true,
         monthKey,
         totalPanels,
         processed,
+        summary: {
+          totalImporteMes,
+          totalPanelesFacturables,
+          panelesActivos,
+          panelesParciales,
+          totalEventos,
+        },
         errors: errors.length > 0 ? errors : undefined,
         message:
           errors.length === 0
