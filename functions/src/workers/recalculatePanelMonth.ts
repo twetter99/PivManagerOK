@@ -103,51 +103,94 @@ export async function recalculatePanelMonth(
 
   functions.logger.info(`[recalculatePanelMonth] Eventos encontrados: ${eventsSnapshot.size}`);
 
-  // 3. Aplicar las reglas de prorrateo para cada evento
+  // 3. Aplicar las reglas de prorrateo calculando períodos de actividad
   let currentState = { ...initialState };
-  let currentDiasFacturables = 0;
   let currentImporte = 0;
   let panelDoc: any = null;
 
-  for (const eventDoc of eventsSnapshot.docs) {
-    const event = eventDoc.data() as PanelEventData;
-    const dayOfMonth = getDayOfMonth(event.effectiveDateLocal);
+  // Nuevo algoritmo: calcular períodos activos entre eventos
+  let estadoActual = initialState.estadoAlCierre; // Estado heredado del mes anterior
+  let periodos: Array<{ inicio: number; fin: number }> = [];
+  let ultimoCambio = 1; // Día donde empieza el período actual
 
+  functions.logger.info(
+    `[recalculatePanelMonth] Estado inicial heredado: ${estadoActual}`
+  );
+
+  // Si el panel inicia el mes ACTIVO y no hay eventos, facturar todo el mes
+  if (eventsSnapshot.size === 0) {
+    if (estadoActual === "ACTIVO") {
+      periodos.push({ inicio: 1, fin: 30 });
+    }
+    // Si está DESMONTADO/BAJA sin eventos, no factura nada (periodos vacío)
+  } else {
+    // Procesar eventos cronológicamente para determinar períodos activos
+    for (const eventDoc of eventsSnapshot.docs) {
+      const event = eventDoc.data() as PanelEventData;
+      const dayOfMonth = getDayOfMonth(event.effectiveDateLocal);
+
+      functions.logger.info(
+        `[recalculatePanelMonth] Procesando evento: ${event.action} (día ${dayOfMonth}), estado previo: ${estadoActual}`
+      );
+
+      // LÓGICA DE PERÍODOS ACTIVOS
+      if (["ALTA", "ALTA_INICIAL", "REINSTALACION"].includes(event.action)) {
+        // Si estaba ACTIVO antes, cerrar período hasta este día (no incluye el día del evento)
+        if (estadoActual === "ACTIVO" && ultimoCambio < dayOfMonth) {
+          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth - 1 });
+        }
+        // Nuevo período ACTIVO desde este día
+        estadoActual = "ACTIVO";
+        ultimoCambio = dayOfMonth;
+        currentState.estadoAlCierre = "ACTIVO";
+      } else if (["DESMONTAJE", "BAJA"].includes(event.action)) {
+        // Si estaba ACTIVO, facturar hasta este día (inclusive)
+        if (estadoActual === "ACTIVO") {
+          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth });
+        }
+        // Cambiar a DESMONTADO/BAJA
+        estadoActual = event.action === "BAJA" ? "BAJA" : "DESMONTADO";
+        ultimoCambio = dayOfMonth + 1; // Siguiente día ya no factura
+        currentState.estadoAlCierre = estadoActual;
+      } else if (event.action === "CAMBIO_TARIFA") {
+        // Actualizar tarifa sin afectar períodos
+        if (event.snapshotAfter?.tarifaBaseMes) {
+          currentState.tarifaAplicada = event.snapshotAfter.tarifaBaseMes;
+          functions.logger.info(
+            `[recalculatePanelMonth] Tarifa actualizada a: ${currentState.tarifaAplicada}`
+          );
+        }
+      } else if (event.action === "AJUSTE_MANUAL") {
+        // Ajuste manual de importe
+        if (event.snapshotAfter?.importeAjuste !== undefined) {
+          currentImporte += event.snapshotAfter.importeAjuste;
+          functions.logger.info(
+            `[recalculatePanelMonth] Ajuste manual aplicado: ${event.snapshotAfter.importeAjuste}`
+          );
+        }
+      }
+    }
+
+    // Si termina el mes ACTIVO, facturar hasta el día 30
+    if (estadoActual === "ACTIVO" && ultimoCambio <= 30) {
+      periodos.push({ inicio: ultimoCambio, fin: 30 });
+    }
+  }
+
+  // Calcular total de días facturables sumando todos los períodos
+  let currentDiasFacturables = 0;
+  for (const periodo of periodos) {
+    const dias = periodo.fin - periodo.inicio + 1;
+    currentDiasFacturables += dias;
     functions.logger.info(
-      `[recalculatePanelMonth] Procesando evento: ${event.action} (día ${dayOfMonth})`
+      `[recalculatePanelMonth] Período activo: días ${periodo.inicio}-${periodo.fin} = ${dias} días`
     );
-
-    // Calcular días facturables según la acción
-    const diasEvento = calculateBillableDays(event.action, dayOfMonth);
-
-    // Acumular días facturables
-    currentDiasFacturables += diasEvento;
-
-    // Actualizar estado del panel según el evento
-    if (["ALTA", "ALTA_INICIAL", "REINSTALACION", "DESMONTADO", "BAJA"].includes(event.action)) {
-      currentState.estadoAlCierre = getNewPanelState(event.action);
-    }
-
-    // Si el evento es CAMBIO_TARIFA, actualizar la tarifa aplicada
-    if (event.action === "CAMBIO_TARIFA" && event.snapshotAfter?.tarifaBaseMes) {
-      currentState.tarifaAplicada = event.snapshotAfter.tarifaBaseMes;
-      functions.logger.info(`[recalculatePanelMonth] Tarifa actualizada a: ${currentState.tarifaAplicada}`);
-    }
-
-    // Si el evento es AJUSTE_MANUAL, puede tener un importe específico
-    if (event.action === "AJUSTE_MANUAL" && event.snapshotAfter?.importeAjuste !== undefined) {
-      currentImporte += event.snapshotAfter.importeAjuste;
-      functions.logger.info(`[recalculatePanelMonth] Ajuste manual aplicado: ${event.snapshotAfter.importeAjuste}`);
-    }
   }
 
-  // LÓGICA CRÍTICA: Panel ACTIVO sin eventos = mes completo (30 días)
-  if (currentState.estadoAlCierre === "ACTIVO" && currentDiasFacturables === 0) {
-    currentDiasFacturables = 30;
-    functions.logger.info(`[recalculatePanelMonth] Panel ACTIVO sin eventos: asignando 30 días automáticamente`);
-  }
+  // Aplicar tope máximo de 30 días
+  currentDiasFacturables = Math.min(currentDiasFacturables, 30);
 
-  // Calcular el importe total según los días acumulados y la tarifa
+  // Calcular el importe total según los días y la tarifa
   currentImporte += calculateImporte(currentDiasFacturables, currentState.tarifaAplicada);
 
   currentState.totalDiasFacturables = currentDiasFacturables;
