@@ -14,6 +14,7 @@ export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
 export { cleanupDuplicatePanels } from "./commands/cleanupDuplicatePanels";
 export { deleteMonthData } from "./commands/deleteMonthData";
 export { createNovemberTransitionEvents } from "./commands/createNovemberTransitionEvents";
+export { findGetafePanel } from "./commands/findGetafePanel";
 
 // ============================================================================
 // COMANDOS (Paso 3 - Patrón Asíncrono)

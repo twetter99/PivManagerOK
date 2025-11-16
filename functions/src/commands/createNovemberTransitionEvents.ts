@@ -33,18 +33,32 @@ export const createNovemberTransitionEvents = functions
     const results: any[] = [];
 
     try {
-      // Buscar los paneles por código
+      // Buscar los paneles por código (búsqueda flexible)
       const panelsSnapshot = await db.collection("panels").get();
       const panelsByCode: Record<string, string> = {};
+      const allPanels: any[] = [];
       
       panelsSnapshot.forEach(doc => {
-        const codigo = doc.data().codigo;
+        const data = doc.data();
+        const codigo = data.codigo;
         if (codigo) {
           panelsByCode[codigo] = doc.id;
+          allPanels.push({ id: doc.id, codigo, municipio: data.municipioId });
         }
       });
 
       functions.logger.info(`[createNovemberTransitionEvents] Encontrados ${Object.keys(panelsByCode).length} paneles`);
+      
+      // Buscar paneles que contengan "Getafe" o "TFT" si no se encuentra "TFT Getafe"
+      const getafePanels = allPanels.filter(p => 
+        p.codigo?.toLowerCase().includes("tft") || 
+        p.codigo?.toLowerCase().includes("getafe") ||
+        p.municipio?.toLowerCase().includes("getafe")
+      );
+      
+      if (getafePanels.length > 0) {
+        functions.logger.info(`[createNovemberTransitionEvents] Paneles de Getafe encontrados:`, getafePanels);
+      }
 
       // Definir los eventos a crear
       const eventsToCreate = [
@@ -73,7 +87,7 @@ export const createNovemberTransitionEvents = functions
           motivo: "Desmontaje registrado en octubre - reflejo en noviembre",
         },
         {
-          codigo: "TFT Getafe",
+          codigo: "TFT Hosp.Getafe",
           municipio: "Getafe",
           action: "ALTA",
           effectiveDateLocal: "2025-10-24",
@@ -84,15 +98,30 @@ export const createNovemberTransitionEvents = functions
 
       // Crear cada evento
       for (const eventData of eventsToCreate) {
-        const panelId = panelsByCode[eventData.codigo];
+        let panelId = panelsByCode[eventData.codigo];
+        
+        // Si no se encuentra por código exacto, buscar paneles de Getafe/TFT
+        if (!panelId && (eventData.codigo.includes("TFT") || eventData.codigo.includes("Getafe"))) {
+          const getafeMatch = allPanels.find(p => 
+            (p.codigo?.toLowerCase().includes("tft") || p.codigo?.toLowerCase().includes("getafe")) &&
+            p.municipio?.toLowerCase().includes("getafe")
+          );
+          
+          if (getafeMatch) {
+            panelId = getafeMatch.id;
+            functions.logger.info(`[createNovemberTransitionEvents] Panel TFT/Getafe encontrado con código: ${getafeMatch.codigo} (id: ${panelId})`);
+          }
+        }
         
         if (!panelId) {
           const error = `Panel ${eventData.codigo} no encontrado en la base de datos`;
           functions.logger.error(error);
+          functions.logger.error(`Búsqueda flexible también falló. Paneles disponibles en Getafe:`, getafePanels);
           results.push({
             codigo: eventData.codigo,
             success: false,
             error,
+            availableGetafePanels: getafePanels.length > 0 ? getafePanels : undefined,
           });
           continue;
         }
@@ -119,12 +148,10 @@ export const createNovemberTransitionEvents = functions
           continue;
         }
 
-        // Crear el evento
-        const eventRef = db
-          .collection("panels")
-          .doc(panelId)
-          .collection("panelEvents")
-          .doc();
+        // Crear el evento con verificación
+        functions.logger.info(
+          `[createNovemberTransitionEvents] Creando evento para panel ${eventData.codigo} (ID: ${panelId})`
+        );
 
         const eventDoc = {
           action: eventData.action,
@@ -144,10 +171,25 @@ export const createNovemberTransitionEvents = functions
           createdBy: context.auth?.uid || "system",
         };
 
-        await eventRef.set(eventDoc);
+        // Usar add() en lugar de doc().set() para garantizar escritura
+        const eventRef = await db
+          .collection("panels")
+          .doc(panelId)
+          .collection("panelEvents")
+          .add(eventDoc);
 
         functions.logger.info(
-          `[createNovemberTransitionEvents] Evento creado: ${eventData.codigo} - ${eventData.action} (${eventData.effectiveDateLocal})`
+          `[createNovemberTransitionEvents] ✅ Evento creado exitosamente: ${eventData.codigo} - ${eventData.action} (${eventData.effectiveDateLocal}) - Event ID: ${eventRef.id}`
+        );
+
+        // Verificar que se escribió leyéndolo de vuelta
+        const verifyDoc = await eventRef.get();
+        if (!verifyDoc.exists) {
+          throw new Error(`Error: Evento no se pudo verificar después de crearlo`);
+        }
+
+        functions.logger.info(
+          `[createNovemberTransitionEvents] ✅ Evento verificado en Firestore: ${eventRef.id}`
         );
 
         results.push({
@@ -157,6 +199,7 @@ export const createNovemberTransitionEvents = functions
           date: eventData.effectiveDateLocal,
           success: true,
           eventId: eventRef.id,
+          verified: true,
         });
       }
 
