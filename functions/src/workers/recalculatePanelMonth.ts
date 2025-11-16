@@ -92,16 +92,20 @@ export async function recalculatePanelMonth(
   }
 
   // 2. Leer todos los panelEvents del mes N (where isDeleted != true)
+  // Nota: NO filtramos por isDeleted en la query porque eventos legacy no tienen ese campo
+  // En su lugar, filtraremos en memoria los que tengan isDeleted === true
   const eventsSnapshot = await db
     .collection("panels")
     .doc(panelId)
     .collection("panelEvents")
     .where("monthKey", "==", monthKey)
-    .where("isDeleted", "==", false)
     .orderBy("effectiveDate", "asc") // Orden cronológico
     .get();
 
-  functions.logger.info(`[recalculatePanelMonth] Eventos encontrados: ${eventsSnapshot.size}`);
+  // Filtrar eventos eliminados en memoria (permite incluir eventos sin el campo isDeleted)
+  const validEvents = eventsSnapshot.docs.filter(doc => doc.data().isDeleted !== true);
+
+  functions.logger.info(`[recalculatePanelMonth] Eventos encontrados: ${validEvents.length} (${eventsSnapshot.size} total)`);
 
   // 3. Aplicar las reglas de prorrateo calculando períodos de actividad
   let currentState = { ...initialState };
@@ -118,14 +122,14 @@ export async function recalculatePanelMonth(
   );
 
   // Si el panel inicia el mes ACTIVO y no hay eventos, facturar todo el mes
-  if (eventsSnapshot.size === 0) {
+  if (validEvents.length === 0) {
     if (estadoActual === "ACTIVO") {
       periodos.push({ inicio: 1, fin: 30 });
     }
     // Si está DESMONTADO/BAJA sin eventos, no factura nada (periodos vacío)
   } else {
     // Procesar eventos cronológicamente para determinar períodos activos
-    for (const eventDoc of eventsSnapshot.docs) {
+    for (const eventDoc of validEvents) {
       const event = eventDoc.data() as PanelEventData;
       const dayOfMonth = getDayOfMonth(event.effectiveDateLocal);
 
