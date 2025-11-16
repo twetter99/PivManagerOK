@@ -68,10 +68,10 @@ export async function recalculatePanelMonth(
       totalDiasFacturables: 0, // Siempre empezamos desde 0 para el nuevo mes
       totalImporte: 0,
       estadoAlCierre: prevData.estadoAlCierre || "ACTIVO",
-      tarifaAplicada: 37.70, // Tarifa estándar 2025 (NO heredar del mes anterior)
+      tarifaAplicada: prevData.tarifaAplicada || 37.70, // Heredar tarifa del mes anterior
     };
     functions.logger.info(
-      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa fija 2025: 37.70`
+      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa: ${initialState.tarifaAplicada}`
     );
   } else {
     // No hay mes anterior: panel nuevo o primer mes
