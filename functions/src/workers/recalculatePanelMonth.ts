@@ -93,17 +93,22 @@ export async function recalculatePanelMonth(
 
   // 2. Leer todos los panelEvents del mes N (where isDeleted != true)
   // Nota: NO filtramos por isDeleted en la query porque eventos legacy no tienen ese campo
-  // En su lugar, filtraremos en memoria los que tengan isDeleted === true
+  // Tampoco usamos orderBy() para evitar necesidad de índice compuesto
   const eventsSnapshot = await db
     .collection("panels")
     .doc(panelId)
     .collection("panelEvents")
     .where("monthKey", "==", monthKey)
-    .orderBy("effectiveDate", "asc") // Orden cronológico
     .get();
 
-  // Filtrar eventos eliminados en memoria (permite incluir eventos sin el campo isDeleted)
-  const validEvents = eventsSnapshot.docs.filter(doc => doc.data().isDeleted !== true);
+  // Filtrar eventos eliminados Y ordenar en memoria (evita índice compuesto)
+  const validEvents = eventsSnapshot.docs
+    .filter(doc => doc.data().isDeleted !== true)
+    .sort((a, b) => {
+      const dateA = a.data().effectiveDate || a.data().effectiveDateLocal || "";
+      const dateB = b.data().effectiveDate || b.data().effectiveDateLocal || "";
+      return dateA.localeCompare(dateB);
+    });
 
   functions.logger.info(`[recalculatePanelMonth] Eventos encontrados: ${validEvents.length} (${eventsSnapshot.size} total)`);
 
