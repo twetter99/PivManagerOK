@@ -13,6 +13,7 @@ export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
 export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
 export { cleanupDuplicatePanels } from "./commands/cleanupDuplicatePanels";
 export { deleteMonthData } from "./commands/deleteMonthData";
+export { createNovemberTransitionEvents } from "./commands/createNovemberTransitionEvents";
 
 // ============================================================================
 // COMANDOS (Paso 3 - Patrón Asíncrono)
