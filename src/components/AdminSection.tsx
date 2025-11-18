@@ -8,7 +8,7 @@
 "use client";
 
 import { useState } from "react";
-import { importBaseMonth } from "@/lib/api";
+import { importBaseMonth, regenerateMonthBilling } from "@/lib/api";
 
 interface AdminSectionProps {
   isAdmin: boolean;
@@ -26,6 +26,8 @@ export default function AdminSection({
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateSuccess, setRegenerateSuccess] = useState(false);
 
   if (!isAdmin) {
     return null;
@@ -266,6 +268,57 @@ export default function AdminSection({
         </p>
       </div>
 
+      {/* Botón temporal: Regenerar Octubre */}
+      <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "#FFF9E6", border: "1px solid #FFD700", borderRadius: "4px" }}>
+        <p style={{ fontSize: "13px", color: "#595959", marginBottom: "8px" }}>
+          🔧 <strong>Herramienta temporal:</strong> Regenerar facturación de octubre 2025
+        </p>
+        <button
+          onClick={async () => {
+            if (regenerating) return;
+            if (!confirm("¿Regenerar facturación de OCTUBRE 2025? Esto recalculará todos los paneles.")) return;
+            setRegenerating(true);
+            setRegenerateSuccess(false);
+            setImportError(null);
+            try {
+              await regenerateMonthBilling("2025-10");
+              setRegenerateSuccess(true);
+              setTimeout(() => window.location.reload(), 2000);
+            } catch (err: any) {
+              setImportError(err.message || "Error al regenerar");
+            } finally {
+              setRegenerating(false);
+            }
+          }}
+          disabled={regenerating}
+          style={{
+            padding: "8px 16px",
+            fontSize: "13px",
+            color: "#FFF",
+            backgroundColor: regenerating ? "#ccc" : "#FF9800",
+            border: "none",
+            borderRadius: "2px",
+            cursor: regenerating ? "not-allowed" : "pointer",
+          }}
+        >
+          {regenerating ? "Regenerando..." : "Regenerar Octubre 2025"}
+        </button>
+        {regenerateSuccess && (
+          <div style={{ marginTop: "8px", fontSize: "12px", color: "#52C41A" }}>
+            ✓ Octubre regenerado. Recargando...
+          </div>
+        )}
+      </div>
+
+      {/* Crear eventos de transición octubre→noviembre */}
+      <CreateTransitionEventsSection />
+
+      {/* Regenerar octubre y noviembre en secuencia */}
+      <RegenerateOctoberNovemberSection />
+
+      {/* Verificar Eventos de Octubre */}
+      <VerifyEventsSection />
+
       {/* Regenerar facturación del mes */}
       <DiagnoseSection monthKey={monthKey} />
 
@@ -331,6 +384,365 @@ export default function AdminSection({
 }
 
 /**
+ * RegenerateOctoberNovemberSection Component
+ * Regenera octubre primero (para aplicar eventos) y luego noviembre (para heredar estado correcto)
+ */
+function RegenerateOctoberNovemberSection() {
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState<string>("");
+  const [results, setResults] = useState<any[]>([]);
+
+  const handleRegenerate = async () => {
+    if (!confirm(
+      "🔄 REGENERAR OCTUBRE Y NOVIEMBRE\n\n" +
+      "Se ejecutarán 2 pasos en secuencia:\n\n" +
+      "1. Regenerar OCTUBRE 2025\n" +
+      "   → Aplicará eventos de DESMONTAJE (09/10 y 24/10)\n" +
+      "   → Actualizará estadoAlCierre de octubre\n\n" +
+      "2. Regenerar NOVIEMBRE 2025\n" +
+      "   → Heredará estado correcto de octubre\n" +
+      "   → Paneles desmontados: 0 días, 0€\n" +
+      "   → TFT Getafe: 30 días, 37.70€\n\n" +
+      "Tiempo estimado: 2-3 minutos\n\n" +
+      "¿Continuar?"
+    )) {
+      return;
+    }
+
+    setIsRegenerating(true);
+    setResults([]);
+    setCurrentStep("Paso 1/2: Regenerando octubre 2025...");
+
+    try {
+      const functions = await import("@/lib/firebase").then((m) => m.functions);
+      const { httpsCallable } = await import("firebase/functions");
+      
+      // Paso 1: Regenerar octubre
+      const regenerateFn = httpsCallable(functions, "regenerateMonthBilling");
+      const octoberResult = await regenerateFn({ monthKey: "2025-10" });
+      setResults(prev => [...prev, {
+        step: "1. Regeneración de octubre",
+        data: octoberResult.data,
+        success: true
+      }]);
+
+      // Esperar 2 segundos
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Paso 2: Regenerar noviembre
+      setCurrentStep("Paso 2/2: Regenerando noviembre 2025...");
+      const novemberResult = await regenerateFn({ monthKey: "2025-11" });
+      setResults(prev => [...prev, {
+        step: "2. Regeneración de noviembre",
+        data: novemberResult.data,
+        success: true
+      }]);
+
+      setCurrentStep("✅ Proceso completado. Recargando en 3 segundos...");
+
+      // Recargar página
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+
+    } catch (err: any) {
+      console.error("Error en regeneración:", err);
+      setResults(prev => [...prev, {
+        step: `Error en ${currentStep}`,
+        data: { message: err.message },
+        success: false
+      }]);
+      setCurrentStep("❌ Error en el proceso");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#FFF7E6", border: "2px solid #FFA940", borderRadius: "4px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#D46B08",
+          marginBottom: "8px",
+        }}
+      >
+        🔄 PASO 2: Regenerar Octubre + Noviembre
+      </label>
+
+      <p
+        style={{
+          fontSize: "13px",
+          color: "#873800",
+          marginBottom: "16px",
+          lineHeight: "1.6",
+        }}
+      >
+        <strong>¿Por qué regenerar octubre primero?</strong><br />
+        Los eventos de DESMONTAJE están en octubre (09/10 y 24/10). Para que noviembre
+        herede el estado correcto (DESMONTADO), primero debemos regenerar octubre para
+        que aplique esos eventos y actualice el estadoAlCierre.<br />
+        <br />
+        <strong>Resultado esperado:</strong><br />
+        • Octubre: aplicará DESMONTAJES, estadoAlCierre = DESMONTADO<br />
+        • Noviembre: heredará DESMONTADO → 0 días, 0€ para paneles desmontados<br />
+        • TFT Getafe: heredará ACTIVO → 30 días, 37.70€
+      </p>
+
+      <button
+        onClick={handleRegenerate}
+        disabled={isRegenerating}
+        style={{
+          padding: "12px 24px",
+          fontSize: "15px",
+          fontWeight: 600,
+          color: "#FFF",
+          backgroundColor: isRegenerating ? "#CCC" : "#FA8C16",
+          border: "none",
+          borderRadius: "4px",
+          cursor: isRegenerating ? "not-allowed" : "pointer",
+          marginBottom: "16px",
+        }}
+      >
+        {isRegenerating ? currentStep : "🔄 Regenerar Octubre + Noviembre"}
+      </button>
+
+      {results.length > 0 && (
+        <div style={{ marginTop: "16px" }}>
+          {results.map((result, idx) => (
+            <div
+              key={idx}
+              style={{
+                marginBottom: "8px",
+                padding: "8px",
+                backgroundColor: result.success ? "#F6FFED" : "#FFF1F0",
+                border: `1px solid ${result.success ? "#B7EB8F" : "#FFCCC7"}`,
+                borderRadius: "2px",
+                fontSize: "12px",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: "4px" }}>
+                {result.success ? "✅" : "❌"} {result.step}
+              </div>
+              <div style={{ fontFamily: "monospace", fontSize: "11px", color: "#666" }}>
+                {JSON.stringify(result.data, null, 2).substring(0, 200)}...
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CreateTransitionEventsSection Component
+ * Crea eventos de transición para noviembre basados en cambios de octubre
+ */
+function CreateTransitionEventsSection() {
+  const [isCreating, setIsCreating] = useState(false);
+  const [result, setResult] = useState<any | null>(null);
+
+  const handleCreateEvents = async () => {
+    if (!confirm(
+      "📝 CREAR EVENTOS DE TRANSICIÓN OCTUBRE→NOVIEMBRE\n\n" +
+      "Se crearán 4 eventos en octubre que afectan noviembre:\n\n" +
+      "• 10573 (Villaviciosa) - DESMONTAJE 09/10\n" +
+      "• 18257 (Hoyo Manzanares) - DESMONTAJE 24/10\n" +
+      "• 8933 (Brunete) - DESMONTAJE 24/10\n" +
+      "• TFT Getafe - ALTA 24/10\n\n" +
+      "Estos eventos NO modificarán octubre (ya correcto)\n" +
+      "pero permitirán que noviembre herede el estado correcto.\n\n" +
+      "¿Continuar?"
+    )) {
+      return;
+    }
+
+    setIsCreating(true);
+    setResult(null);
+
+    try {
+      const functions = await import("@/lib/firebase").then((m) => m.functions);
+      const { httpsCallable } = await import("firebase/functions");
+      
+      const createEventsFn = httpsCallable(functions, "createNovemberTransitionEvents");
+      const response = await createEventsFn({});
+      const data = response.data as any;
+      setResult(data);
+
+      alert(`✅ Eventos creados correctamente\n\n${data?.summary?.created || 0} eventos creados`);
+    } catch (err: any) {
+      console.error("Error creando eventos:", err);
+      setResult({
+        success: false,
+        error: err.message
+      });
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#E6F7FF", border: "2px solid #1890FF", borderRadius: "4px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#0050B3",
+          marginBottom: "8px",
+        }}
+      >
+        📝 PASO 1: Crear Eventos de Transición Oct→Nov
+      </label>
+
+      <p
+        style={{
+          fontSize: "13px",
+          color: "#003A8C",
+          marginBottom: "16px",
+          lineHeight: "1.6",
+        }}
+      >
+        <strong>Situación:</strong><br />
+        Octubre está correcto pero noviembre no refleja los cambios:<br />
+        • 3 paneles desmontados en octubre (deben facturar 0€ en nov)<br />
+        • 1 panel dado de alta en octubre (debe facturar 37.70€ en nov)<br />
+        <br />
+        <strong>Solución:</strong><br />
+        Crear eventos en octubre que permitan heredar el estado correcto a noviembre.
+      </p>
+
+      <button
+        onClick={handleCreateEvents}
+        disabled={isCreating}
+        style={{
+          padding: "12px 24px",
+          fontSize: "15px",
+          fontWeight: 600,
+          color: "#FFF",
+          backgroundColor: isCreating ? "#CCC" : "#1890FF",
+          border: "none",
+          borderRadius: "4px",
+          cursor: isCreating ? "not-allowed" : "pointer",
+          marginBottom: "16px",
+        }}
+      >
+        {isCreating ? "Creando eventos..." : "🚀 Crear 4 Eventos de Transición"}
+      </button>
+
+      {result && (
+        <div
+          style={{
+            padding: "12px",
+            backgroundColor: result.success ? "#F6FFED" : "#FFF1F0",
+            border: `1px solid ${result.success ? "#B7EB8F" : "#FFCCC7"}`,
+            borderRadius: "4px",
+            marginTop: "12px",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: "8px" }}>
+            {result.success ? "✅ Completado" : "❌ Error"}
+          </div>
+          {result.summary && (
+            <div style={{ fontSize: "12px", marginBottom: "8px" }}>
+              Creados: {result.summary.created} | Omitidos: {result.summary.skipped} | Fallidos: {result.summary.failed}
+            </div>
+          )}
+          {result.details && (
+            <div style={{ fontSize: "11px", fontFamily: "monospace", maxHeight: "200px", overflow: "auto" }}>
+              {result.details.map((detail: any, idx: number) => (
+                <div key={idx} style={{ marginBottom: "4px" }}>
+                  {detail.success ? "✅" : "❌"} {detail.codigo} - {detail.action} ({detail.date})
+                  {detail.skipped && " (ya existe)"}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * VerifyEventsSection Component
+ * Verifica si existen los eventos de octubre
+ */
+function VerifyEventsSection() {
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [results, setResults] = useState<any>(null);
+
+  const handleVerify = async () => {
+    setIsVerifying(true);
+    setResults(null);
+
+    try {
+      const functions = await import("@/lib/firebase").then((m) => m.functions);
+      const { httpsCallable } = await import("firebase/functions");
+
+      const verifyFn = httpsCallable(functions, "verifyOctoberEvents");
+      const result = await verifyFn({});
+      setResults(result.data);
+    } catch (err: any) {
+      console.error("Error verificando eventos:", err);
+      setResults({ success: false, error: err.message });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#E6F7FF", border: "2px solid #1890FF", borderRadius: "4px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#0050B3",
+          marginBottom: "8px",
+        }}
+      >
+        🔍 VERIFICAR EVENTOS DE OCTUBRE
+      </label>
+
+      <p style={{ fontSize: "13px", marginBottom: "16px", lineHeight: "1.6" }}>
+        Verifica si los eventos de transición de octubre existen en Firestore
+      </p>
+
+      <button
+        onClick={handleVerify}
+        disabled={isVerifying}
+        style={{
+          padding: "12px 24px",
+          fontSize: "15px",
+          fontWeight: 600,
+          color: "#FFF",
+          backgroundColor: isVerifying ? "#A3A3A3" : "#1890FF",
+          border: "none",
+          borderRadius: "4px",
+          cursor: isVerifying ? "not-allowed" : "pointer",
+          marginBottom: "16px",
+        }}
+      >
+        {isVerifying ? "Verificando..." : "🔍 Verificar Eventos"}
+      </button>
+
+      {results && (
+        <div style={{ marginTop: "16px", padding: "12px", backgroundColor: "#FFF", border: "1px solid #D9D9D9", borderRadius: "4px" }}>
+          <pre style={{ fontSize: "11px", overflow: "auto", maxHeight: "400px" }}>
+            {JSON.stringify(results, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * CleanupDuplicatesSection Component
  * Proceso completo de limpieza y regeneración
  */
@@ -341,12 +753,11 @@ function CleanupDuplicatesSection() {
 
   const handleFullCleanup = async () => {
     if (!confirm(
-      "🔧 PROCESO COMPLETO DE LIMPIEZA\n\n" +
-      "Se ejecutarán 3 pasos:\n" +
-      "1. Limpiar paneles duplicados (894 → 447)\n" +
-      "2. Eliminar datos de noviembre 2025\n" +
-      "3. Regenerar facturación de noviembre\n\n" +
-      "Esto tomará aproximadamente 2-3 minutos.\n\n" +
+      "🔧 REGENERAR FACTURACIÓN DE NOVIEMBRE\n\n" +
+      "Se ejecutarán 2 pasos:\n" +
+      "1. Eliminar facturación actual de noviembre 2025\n" +
+      "2. Regenerar con la nueva lógica de períodos activos\n\n" +
+      "Esto tomará aproximadamente 1-2 minutos.\n\n" +
       "¿Continuar?"
     )) {
       return;
@@ -354,26 +765,24 @@ function CleanupDuplicatesSection() {
 
     setIsProcessing(true);
     setResults([]);
-    setCurrentStep("Paso 1/3: Limpiando paneles duplicados...");
+    setCurrentStep("Paso 1/2: Eliminando facturación actual de noviembre...");
 
     try {
       const functions = await import("@/lib/firebase").then((m) => m.functions);
       const { httpsCallable } = await import("firebase/functions");
 
-      // Paso 1: Limpiar paneles duplicados
-      const cleanupFn = httpsCallable(functions, "cleanupDuplicatePanels");
-      const cleanupResult = await cleanupFn({ dryRun: false });
+      // Paso 1: Verificación inicial
       setResults(prev => [...prev, {
-        step: "1. Limpieza de paneles",
-        data: cleanupResult.data,
+        step: "1. Verificación inicial",
+        data: { message: "Iniciando proceso de limpieza y regeneración..." },
         success: true
       }]);
 
       // Esperar 2 segundos
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Paso 2: Eliminar billing de noviembre
-      setCurrentStep("Paso 2/3: Eliminando datos de noviembre...");
+      // Paso 2: Limpiar SOLO billing de noviembre duplicado (octubre intocable)
+      setCurrentStep("Paso 1/2: Limpiando billing duplicado de noviembre...");
       const deleteFn = httpsCallable(functions, "deleteMonthData");
       const deleteResult = await deleteFn({ monthKey: "2025-11" });
       setResults(prev => [...prev, {
@@ -385,12 +794,12 @@ function CleanupDuplicatesSection() {
       // Esperar 2 segundos
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Paso 3: Regenerar noviembre
-      setCurrentStep("Paso 3/3: Regenerando facturación...");
+      // Paso 3: Regenerar SOLO noviembre (heredar estado de octubre que YA está correcto)
+      setCurrentStep("Paso 2/2: Regenerando noviembre (heredar de octubre)...");
       const regenerateFn = httpsCallable(functions, "regenerateMonthBilling");
       const regenerateResult = await regenerateFn({ monthKey: "2025-11" });
       setResults(prev => [...prev, {
-        step: "3. Regeneración de facturación",
+        step: "3. Regeneración de noviembre",
         data: regenerateResult.data,
         success: true
       }]);
@@ -437,16 +846,17 @@ function CleanupDuplicatesSection() {
           lineHeight: "1.6",
         }}
       >
-        <strong>Problema detectado:</strong> 894 paneles (deberían ser 447)<br />
-        <strong>Causa:</strong> Importación duplicada<br />
+        <strong>Situación actual:</strong><br />
+        • Octubre 2025 CORRECTO (447 paneles, 16.781,53€) - NO SE TOCA<br />
+        • Noviembre 2025 con datos incorrectos (necesita heredar de octubre)<br />
+        • 447 paneles únicos en base de datos<br />
         <br />
         Este proceso ejecutará automáticamente:
       </p>
 
       <ol style={{ fontSize: "12px", marginLeft: "20px", marginBottom: "16px", lineHeight: "1.8" }}>
-        <li>Limpieza de paneles duplicados (894 → 447)</li>
-        <li>Eliminación de datos de noviembre 2025</li>
-        <li>Regeneración de facturación de noviembre</li>
+        <li>Eliminar facturación actual de noviembre 2025 (octubre queda intacto)</li>
+        <li>Regenerar noviembre 2025 heredando el estado correcto de octubre</li>
       </ol>
 
       <button

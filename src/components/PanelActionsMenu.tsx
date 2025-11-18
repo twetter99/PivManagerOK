@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { requestPanelChange } from "@/lib/api";
+import { requestPanelChange, deleteAllPanelEvents, waitForBillingUpdate } from "@/lib/api";
 
 interface PanelActionsMenuProps {
   panelId: string;
@@ -30,6 +30,21 @@ export default function PanelActionsMenu({
   const [showDesmontadoModal, setShowDesmontadoModal] = useState(false);
   const [showReinstalacionModal, setShowReinstalacionModal] = useState(false);
   const [showAjusteModal, setShowAjusteModal] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deleteAllResult, setDeleteAllResult] = useState<
+    | {
+        totalDiasFacturables: number;
+        totalImporte: number;
+        estadoAlCierre: "ACTIVO" | "DESMONTADO" | "BAJA";
+        tarifaAplicada: number;
+      }
+    | null
+  >(null);
+  // NUEVOS ESTADOS PARA RESULTADOS DE FACTURACIÓN
+  const [billingResultDesmontado, setBillingResultDesmontado] = useState<any>(null);
+  const [billingResultReinstalacion, setBillingResultReinstalacion] = useState<any>(null);
+  const [billingResultBaja, setBillingResultBaja] = useState<any>(null);
+  const [billingResultAjuste, setBillingResultAjuste] = useState<any>(null);
   const [fechaBaja, setFechaBaja] = useState("");
   const [fechaDesmontado, setFechaDesmontado] = useState("");
   const [fechaReinstalacion, setFechaReinstalacion] = useState("");
@@ -37,6 +52,7 @@ export default function PanelActionsMenu({
   const [importeAjuste, setImporteAjuste] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionCompleted, setActionCompleted] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Cerrar menú al hacer clic fuera
@@ -65,7 +81,7 @@ export default function PanelActionsMenu({
     setError(null);
 
     try {
-      await requestPanelChange({
+      const res = await requestPanelChange({
         panelId,
         monthKey,
         action: "BAJA",
@@ -75,10 +91,9 @@ export default function PanelActionsMenu({
         snapshotBefore: {},
         snapshotAfter: {},
       });
-
-      setShowBajaModal(false);
-      setShowMenu(false);
-      onSuccess?.();
+      if (res?.totals) setBillingResultBaja(res.totals);
+      setActionCompleted(true);
+      setTimeout(() => { if (onSuccess) onSuccess(); }, 200);
     } catch (err: any) {
       setError(err.message || "Error al dar de baja");
     } finally {
@@ -96,7 +111,7 @@ export default function PanelActionsMenu({
     setError(null);
 
     try {
-      await requestPanelChange({
+      const res = await requestPanelChange({
         panelId,
         monthKey,
         action: "DESMONTADO",
@@ -106,10 +121,9 @@ export default function PanelActionsMenu({
         snapshotBefore: {},
         snapshotAfter: {},
       });
-
-      setShowDesmontadoModal(false);
-      setShowMenu(false);
-      onSuccess?.();
+      if (res?.totals) setBillingResultDesmontado(res.totals);
+      setActionCompleted(true);
+      setTimeout(() => { if (onSuccess) onSuccess(); }, 200);
     } catch (err: any) {
       setError(err.message || "Error al desmontar");
     } finally {
@@ -127,7 +141,7 @@ export default function PanelActionsMenu({
     setError(null);
 
     try {
-      await requestPanelChange({
+      const res = await requestPanelChange({
         panelId,
         monthKey,
         action: "REINSTALACION",
@@ -137,10 +151,9 @@ export default function PanelActionsMenu({
         snapshotBefore: {},
         snapshotAfter: {},
       });
-
-      setShowReinstalacionModal(false);
-      setShowMenu(false);
-      onSuccess?.();
+      if (res?.totals) setBillingResultReinstalacion(res.totals);
+      setActionCompleted(true);
+      setTimeout(() => { if (onSuccess) onSuccess(); }, 200);
     } catch (err: any) {
       setError(err.message || "Error al reinstalar");
     } finally {
@@ -158,7 +171,7 @@ export default function PanelActionsMenu({
     setError(null);
 
     try {
-      await requestPanelChange({
+      const res = await requestPanelChange({
         panelId,
         monthKey,
         action: "AJUSTE_MANUAL",
@@ -168,12 +181,27 @@ export default function PanelActionsMenu({
         snapshotBefore: {},
         snapshotAfter: { importeAjuste: parseFloat(importeAjuste) },
       });
-
-      setShowAjusteModal(false);
-      setShowMenu(false);
-      onSuccess?.();
+      if (res?.totals) setBillingResultAjuste(res.totals);
+      setActionCompleted(true);
+      setTimeout(() => { if (onSuccess) onSuccess(); }, 200);
     } catch (err: any) {
       setError(err.message || "Error al aplicar ajuste");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAllEvents = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await deleteAllPanelEvents({ panelId, monthKey });
+      if (res.totals) {
+        setDeleteAllResult(res.totals);
+      }
+      onSuccess?.();
+    } catch (err: any) {
+      setError(err.message || "Error al eliminar eventos");
     } finally {
       setLoading(false);
     }
@@ -213,6 +241,30 @@ export default function PanelActionsMenu({
             minWidth: "150px",
           }}
         >
+          <button
+            onClick={() => {
+              setShowDeleteAllModal(true);
+              setShowMenu(false);
+            }}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              fontSize: "13px",
+              color: "#000",
+              backgroundColor: "transparent",
+              border: "none",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#F7F7F7";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            Eliminar eventos del mes
+          </button>
           <button
             onClick={() => {
               setShowDesmontadoModal(true);
@@ -311,6 +363,131 @@ export default function PanelActionsMenu({
           </button>
         </div>
       )}
+      {/* Modal: Eliminar todos los eventos del mes */}
+      {showDeleteAllModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+          onClick={() => {
+            setDeleteAllResult(null);
+            setShowDeleteAllModal(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFF",
+              padding: "24px",
+              borderRadius: "4px",
+              maxWidth: "420px",
+              width: "90%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 600 }}>
+              Eliminar eventos del mes
+            </h3>
+            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#595959" }}>
+              Panel: {codigo} - {municipio}
+            </p>
+            <p style={{ margin: "0 0 16px 8px", fontSize: "13px", color: "#A8071A" }}>
+              Esta acción marcará como eliminados todos los eventos de {monthKey} y recalculará la facturación.
+            </p>
+            {deleteAllResult && (
+              <div
+                style={{
+                  border: "1px solid #EAEAEA",
+                  borderRadius: 4,
+                  padding: "12px 12px",
+                  marginBottom: 16,
+                  background: "#FAFAFA",
+                }}
+              >
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Días facturables: <strong>{deleteAllResult.totalDiasFacturables}</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Importe: <strong>{deleteAllResult.totalImporte.toFixed(2)} €</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Estado al cierre: <strong>{deleteAllResult.estadoAlCierre}</strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Tarifa aplicada: <strong>{deleteAllResult.tarifaAplicada.toFixed(2)} €</strong>
+                </div>
+              </div>
+            )}
+            {error && (
+              <div style={{ padding: "8px", marginBottom: "16px", backgroundColor: "#FFE5E5", color: "#D32F2F", fontSize: "12px", borderRadius: "2px" }}>
+                {error}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={loading}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  color: "#595959",
+                  backgroundColor: "transparent",
+                  border: "1px solid #D9D9D9",
+                  borderRadius: "2px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancelar
+              </button>
+              {!deleteAllResult && (
+                <button
+                  onClick={handleDeleteAllEvents}
+                  disabled={loading}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: loading ? "#ccc" : "#D32F2F",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: loading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loading ? "Eliminando..." : "Eliminar eventos"}
+                </button>
+              )}
+              {deleteAllResult && (
+                <button
+                  onClick={() => {
+                    setDeleteAllResult(null);
+                    setShowDeleteAllModal(false);
+                    setShowMenu(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: "#4CAF50",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Hecho
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Desmontar Panel */}
       {showDesmontadoModal && (
@@ -363,42 +540,95 @@ export default function PanelActionsMenu({
                 marginBottom: "16px",
               }}
             />
+            {actionCompleted && !error && (
+              <div style={{ padding: "12px", marginBottom: "16px", backgroundColor: "#F6FFED", border: "1px solid #B7EB8F", color: "#52C41A", fontSize: "13px", borderRadius: "4px" }}>
+                ✓ Panel desmontado correctamente.
+              </div>
+            )}
+            {billingResultDesmontado && (
+              <div
+                style={{
+                  border: "1px solid #EAEAEA",
+                  borderRadius: 4,
+                  padding: "12px 12px",
+                  marginBottom: 16,
+                  background: "#FAFAFA",
+                }}
+              >
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Días facturables: <strong>{billingResultDesmontado.totalDiasFacturables}</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Importe: <strong>{billingResultDesmontado.totalImporte.toFixed(2)} €</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Estado al cierre: <strong>{billingResultDesmontado.estadoAlCierre}</strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Tarifa aplicada: <strong>{billingResultDesmontado.tarifaAplicada.toFixed(2)} €</strong>
+                </div>
+              </div>
+            )}
             {error && (
               <div style={{ padding: "8px", marginBottom: "16px", backgroundColor: "#FFE5E5", color: "#D32F2F", fontSize: "12px", borderRadius: "2px" }}>
                 {error}
               </div>
             )}
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setShowDesmontadoModal(false)}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#595959",
-                  backgroundColor: "transparent",
-                  border: "1px solid #D9D9D9",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDesmontado}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#FFF",
-                  backgroundColor: loading ? "#ccc" : "#FF9800",
-                  border: "none",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loading ? "Procesando..." : "Desmontar"}
-              </button>
+              {!actionCompleted && (
+                <>
+                  <button
+                    onClick={() => setShowDesmontadoModal(false)}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#595959",
+                      backgroundColor: "transparent",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDesmontado}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#FFF",
+                      backgroundColor: loading ? "#ccc" : "#FF9800",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loading ? "Procesando..." : "Desmontar"}
+                  </button>
+                </>
+              )}
+              {actionCompleted && (
+                <button
+                  onClick={() => {
+                    setActionCompleted(false);
+                    setShowDesmontadoModal(false);
+                    setShowMenu(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: "#4CAF50",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Hecho
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -455,42 +685,95 @@ export default function PanelActionsMenu({
                 marginBottom: "16px",
               }}
             />
+            {actionCompleted && !error && (
+              <div style={{ padding: "12px", marginBottom: "16px", backgroundColor: "#F6FFED", border: "1px solid #B7EB8F", color: "#52C41A", fontSize: "13px", borderRadius: "4px" }}>
+                ✓ Panel reinstalado correctamente.
+              </div>
+            )}
+            {billingResultReinstalacion && (
+              <div
+                style={{
+                  border: "1px solid #EAEAEA",
+                  borderRadius: 4,
+                  padding: "12px 12px",
+                  marginBottom: 16,
+                  background: "#FAFAFA",
+                }}
+              >
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Días facturables: <strong>{billingResultReinstalacion.totalDiasFacturables}</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Importe: <strong>{billingResultReinstalacion.totalImporte.toFixed(2)} €</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Estado al cierre: <strong>{billingResultReinstalacion.estadoAlCierre}</strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Tarifa aplicada: <strong>{billingResultReinstalacion.tarifaAplicada.toFixed(2)} €</strong>
+                </div>
+              </div>
+            )}
             {error && (
               <div style={{ padding: "8px", marginBottom: "16px", backgroundColor: "#FFE5E5", color: "#D32F2F", fontSize: "12px", borderRadius: "2px" }}>
                 {error}
               </div>
             )}
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setShowReinstalacionModal(false)}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#595959",
-                  backgroundColor: "transparent",
-                  border: "1px solid #D9D9D9",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleReinstalacion}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#FFF",
-                  backgroundColor: loading ? "#ccc" : "#4CAF50",
-                  border: "none",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loading ? "Procesando..." : "Reinstalar"}
-              </button>
+              {!actionCompleted && (
+                <>
+                  <button
+                    onClick={() => setShowReinstalacionModal(false)}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#595959",
+                      backgroundColor: "transparent",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleReinstalacion}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#FFF",
+                      backgroundColor: loading ? "#ccc" : "#4CAF50",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loading ? "Procesando..." : "Reinstalar"}
+                  </button>
+                </>
+              )}
+              {actionCompleted && (
+                <button
+                  onClick={() => {
+                    setActionCompleted(false);
+                    setShowReinstalacionModal(false);
+                    setShowMenu(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: "#4CAF50",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Hecho
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -564,42 +847,95 @@ export default function PanelActionsMenu({
                 marginBottom: "16px",
               }}
             />
+            {actionCompleted && !error && (
+              <div style={{ padding: "12px", marginBottom: "16px", backgroundColor: "#F6FFED", border: "1px solid #B7EB8F", color: "#52C41A", fontSize: "13px", borderRadius: "4px" }}>
+                ✓ Ajuste manual aplicado correctamente.
+              </div>
+            )}
+            {billingResultAjuste && (
+              <div
+                style={{
+                  border: "1px solid #EAEAEA",
+                  borderRadius: 4,
+                  padding: "12px 12px",
+                  marginBottom: 16,
+                  background: "#FAFAFA",
+                }}
+              >
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Días facturables: <strong>{billingResultAjuste.totalDiasFacturables}</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Importe: <strong>{billingResultAjuste.totalImporte.toFixed(2)} €</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Estado al cierre: <strong>{billingResultAjuste.estadoAlCierre}</strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Tarifa aplicada: <strong>{billingResultAjuste.tarifaAplicada.toFixed(2)} €</strong>
+                </div>
+              </div>
+            )}
             {error && (
               <div style={{ padding: "8px", marginBottom: "16px", backgroundColor: "#FFE5E5", color: "#D32F2F", fontSize: "12px", borderRadius: "2px" }}>
                 {error}
               </div>
             )}
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setShowAjusteModal(false)}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#595959",
-                  backgroundColor: "transparent",
-                  border: "1px solid #D9D9D9",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAjusteManual}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#FFF",
-                  backgroundColor: loading ? "#ccc" : "#2196F3",
-                  border: "none",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loading ? "Guardando..." : "Aplicar Ajuste"}
-              </button>
+              {!actionCompleted && (
+                <>
+                  <button
+                    onClick={() => setShowAjusteModal(false)}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#595959",
+                      backgroundColor: "transparent",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAjusteManual}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#FFF",
+                      backgroundColor: loading ? "#ccc" : "#2196F3",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loading ? "Guardando..." : "Aplicar Ajuste"}
+                  </button>
+                </>
+              )}
+              {actionCompleted && (
+                <button
+                  onClick={() => {
+                    setActionCompleted(false);
+                    setShowAjusteModal(false);
+                    setShowMenu(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: "#4CAF50",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Hecho
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -656,42 +992,95 @@ export default function PanelActionsMenu({
                 marginBottom: "16px",
               }}
             />
+            {actionCompleted && !error && (
+              <div style={{ padding: "12px", marginBottom: "16px", backgroundColor: "#F6FFED", border: "1px solid #B7EB8F", color: "#52C41A", fontSize: "13px", borderRadius: "4px" }}>
+                ✓ Panel dado de baja correctamente.
+              </div>
+            )}
+            {billingResultBaja && (
+              <div
+                style={{
+                  border: "1px solid #EAEAEA",
+                  borderRadius: 4,
+                  padding: "12px 12px",
+                  marginBottom: 16,
+                  background: "#FAFAFA",
+                }}
+              >
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Días facturables: <strong>{billingResultBaja.totalDiasFacturables}</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Importe: <strong>{billingResultBaja.totalImporte.toFixed(2)} €</strong>
+                </div>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  Estado al cierre: <strong>{billingResultBaja.estadoAlCierre}</strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Tarifa aplicada: <strong>{billingResultBaja.tarifaAplicada.toFixed(2)} €</strong>
+                </div>
+              </div>
+            )}
             {error && (
               <div style={{ padding: "8px", marginBottom: "16px", backgroundColor: "#FFE5E5", color: "#D32F2F", fontSize: "12px", borderRadius: "2px" }}>
                 {error}
               </div>
             )}
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setShowBajaModal(false)}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#595959",
-                  backgroundColor: "transparent",
-                  border: "1px solid #D9D9D9",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDarDeBaja}
-                disabled={loading}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  color: "#FFF",
-                  backgroundColor: loading ? "#ccc" : "#D32F2F",
-                  border: "none",
-                  borderRadius: "2px",
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loading ? "Procesando..." : "Dar de Baja"}
-              </button>
+              {!actionCompleted && (
+                <>
+                  <button
+                    onClick={() => setShowBajaModal(false)}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#595959",
+                      backgroundColor: "transparent",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDarDeBaja}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#FFF",
+                      backgroundColor: loading ? "#ccc" : "#D32F2F",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loading ? "Procesando..." : "Dar de Baja"}
+                  </button>
+                </>
+              )}
+              {actionCompleted && (
+                <button
+                  onClick={() => {
+                    setActionCompleted(false);
+                    setShowBajaModal(false);
+                    setShowMenu(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    color: "#FFF",
+                    backgroundColor: "#4CAF50",
+                    border: "none",
+                    borderRadius: "2px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Hecho
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -3,8 +3,10 @@ import * as admin from "firebase-admin";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { assertIsEditorOrAdmin, getUserEmail, now } from "../lib/utils";
 import { PanelEventAction } from "../lib/schemas";
+import { getPreviousMonthKey } from "../lib/billingRules";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
+import { recalculatePanelMonth } from "../workers/recalculatePanelMonth";
 
 // Schema de validación para la solicitud de cambio de panel
 const RequestPanelChangeSchema = z.object({
@@ -70,6 +72,29 @@ export const requestPanelChange = functions
       );
     }
 
+    // 3.1 Validación ligera para REINSTALACION: requiere estado previo DESMONTADO/BAJA
+    if (eventData.action === "REINSTALACION") {
+      const previousMonthKey = getPreviousMonthKey(monthKey);
+
+      const panelSnap = await db.collection("panels").doc(panelId).get();
+      const prevBillingSnap = await db
+        .collection("billingMonthlyPanel")
+        .doc(`${panelId}_${previousMonthKey}`)
+        .get();
+
+      const prevState: string = prevBillingSnap.exists
+        ? (prevBillingSnap.data()!.estadoAlCierre as string)
+        : (panelSnap.data()?.estadoActual as string) || "ACTIVO";
+
+      if (prevState === "ACTIVO") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `No se puede REINSTALAR porque el estado previo (${previousMonthKey}) es ACTIVO. ` +
+            `Primero debe quedar DESMONTADO o BAJA en el mes anterior.`
+        );
+      }
+    }
+
     // 4. Generar idempotencyKey (UUID v4)
     const idempotencyKey = uuidv4();
     const eventId = idempotencyKey; // Usamos el mismo UUID como ID del documento
@@ -113,11 +138,32 @@ export const requestPanelChange = functions
       // La tarea puede ser reencolada manualmente o mediante un trigger.
     }
 
-    // 7. Responder inmediatamente al frontend
+    // 7. Recalcular facturación inmediatamente y devolver totales
+    try {
+      await recalculatePanelMonth(panelId, monthKey);
+    } catch (recalcError) {
+      functions.logger.error("Error al recalcular panel:", recalcError);
+      // Continuar para devolver respuesta
+    }
+
+    // Leer el billingMonthlyPanel actualizado
+    const billingRef = db.collection("billingMonthlyPanel").doc(`${panelId}_${monthKey}`);
+    const billingDoc = await billingRef.get();
+    const billing = billingDoc.exists ? billingDoc.data() as any : null;
+
+    // 8. Responder con totales de facturación
     return {
       status: "ok",
       eventId,
       idempotencyKey,
+      totals: billing
+        ? {
+            totalDiasFacturables: billing.totalDiasFacturables || 0,
+            totalImporte: billing.totalImporte || 0,
+            estadoAlCierre: billing.estadoAlCierre || "ACTIVO",
+            tarifaAplicada: billing.tarifaAplicada || 0,
+          }
+        : undefined,
     };
   });
 
@@ -146,8 +192,7 @@ async function enqueueProcessPanelEventTask(
   const parent = tasksClient.queuePath(project, location, queue);
 
   // URL del Cloud Function HTTP que procesará el evento
-  // Esta función se implementará en el siguiente paso
-  const url = `https://${location}-${project}.cloudfunctions.net/processPanelEvent`;
+  const url = `https://${location}-${project}.cloudfunctions.net/processPanelEventTask`;
 
   // Crear la tarea con idempotencyKey como taskId
   const task = {

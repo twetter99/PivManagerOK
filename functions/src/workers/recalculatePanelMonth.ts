@@ -8,6 +8,7 @@ import {
   getPreviousMonthKey,
   getNewPanelState,
 } from "../lib/billingRules";
+import { recalculateSummary } from "../lib/summaryCalculations";
 
 interface PanelEventData {
   action: string;
@@ -68,26 +69,22 @@ export async function recalculatePanelMonth(
       totalDiasFacturables: 0, // Siempre empezamos desde 0 para el nuevo mes
       totalImporte: 0,
       estadoAlCierre: prevData.estadoAlCierre || "ACTIVO",
-      tarifaAplicada: prevData.tarifaAplicada || 37.70, // Heredar tarifa del mes anterior
+      tarifaAplicada: 37.70, // Usar tarifa estándar 2025, NO heredar ni leer del panel
     };
     functions.logger.info(
-      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa: ${initialState.tarifaAplicada}`
+      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa estándar: ${initialState.tarifaAplicada}`
     );
   } else {
     // No hay mes anterior: panel nuevo o primer mes
-    const panelDoc = await db.collection("panels").doc(panelId).get();
-    if (!panelDoc.exists) {
-      throw new Error(`Panel ${panelId} no encontrado`);
-    }
-    const panelData = panelDoc.data()!;
+    // Usar ACTIVO como estado inicial por defecto (panel recién instalado)
     initialState = {
       totalDiasFacturables: 0,
       totalImporte: 0,
-      estadoAlCierre: panelData.estadoActual || "ACTIVO",
-      tarifaAplicada: panelData.tarifaBaseMes || 37.70,
+      estadoAlCierre: "ACTIVO", // Por defecto, un panel sin historial se asume ACTIVO
+      tarifaAplicada: 37.70, // Usar tarifa estándar 2025
     };
     functions.logger.info(
-      `[recalculatePanelMonth] Sin mes anterior. Estado inicial desde panel: ${panelData.estadoActual}`
+      `[recalculatePanelMonth] Sin mes anterior. Estado inicial por defecto: ACTIVO, tarifa estándar: ${initialState.tarifaAplicada}`
     );
   }
 
@@ -105,9 +102,17 @@ export async function recalculatePanelMonth(
   const validEvents = eventsSnapshot.docs
     .filter(doc => doc.data().isDeleted !== true)
     .sort((a, b) => {
-      const dateA = a.data().effectiveDate || a.data().effectiveDateLocal || "";
-      const dateB = b.data().effectiveDate || b.data().effectiveDateLocal || "";
-      return dateA.localeCompare(dateB);
+      const getMillis = (d: FirebaseFirestore.QueryDocumentSnapshot) => {
+        const data = d.data() as any;
+        const eff = data.effectiveDate;
+        if (eff && typeof eff.toMillis === "function") {
+          try { return eff.toMillis(); } catch { /* noop */ }
+        }
+        const local: string | undefined = data.effectiveDateLocal;
+        const ms = local ? Date.parse(local) : NaN;
+        return Number.isNaN(ms) ? 0 : ms;
+      };
+      return getMillis(a) - getMillis(b);
     });
 
   functions.logger.info(`[recalculatePanelMonth] Eventos encontrados: ${validEvents.length} (${eventsSnapshot.size} total)`);
@@ -130,8 +135,16 @@ export async function recalculatePanelMonth(
   if (validEvents.length === 0) {
     if (estadoActual === "ACTIVO") {
       periodos.push({ inicio: 1, fin: 30 });
+      functions.logger.info(
+        `[recalculatePanelMonth] Sin eventos: Panel ACTIVO heredado, facturando mes completo (30 días)`
+      );
+    } else {
+      functions.logger.info(
+        `[recalculatePanelMonth] Sin eventos: Panel ${estadoActual} heredado, sin facturación`
+      );
     }
-    // Si está DESMONTADO/BAJA sin eventos, no factura nada (periodos vacío)
+    // Mantener el estado heredado del mes anterior
+    currentState.estadoAlCierre = estadoActual;
   } else {
     // Procesar eventos cronológicamente para determinar períodos activos
     for (const eventDoc of validEvents) {
@@ -144,17 +157,16 @@ export async function recalculatePanelMonth(
 
       // LÓGICA DE PERÍODOS ACTIVOS
       if (["ALTA", "ALTA_INICIAL", "REINSTALACION"].includes(event.action)) {
-        // Si estaba ACTIVO antes, cerrar período hasta este día (no incluye el día del evento)
-        if (estadoActual === "ACTIVO" && ultimoCambio < dayOfMonth) {
-          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth - 1 });
+        // Si estaba DESMONTADO/BAJA antes, empezar nuevo período ACTIVO desde este día
+        // Si estaba ACTIVO antes, NO hacer nada (ya está facturando)
+        if (estadoActual !== "ACTIVO") {
+          estadoActual = "ACTIVO";
+          ultimoCambio = dayOfMonth; // Nuevo período comienza este día
+          currentState.estadoAlCierre = "ACTIVO";
         }
-        // Nuevo período ACTIVO desde este día
-        estadoActual = "ACTIVO";
-        ultimoCambio = dayOfMonth;
-        currentState.estadoAlCierre = "ACTIVO";
-      } else if (["DESMONTAJE", "BAJA"].includes(event.action)) {
+      } else if (["DESMONTADO", "DESMONTAJE", "BAJA"].includes(event.action)) {
         // Si estaba ACTIVO, facturar hasta este día (inclusive)
-        if (estadoActual === "ACTIVO") {
+        if (estadoActual === "ACTIVO" && ultimoCambio <= dayOfMonth) {
           periodos.push({ inicio: ultimoCambio, fin: dayOfMonth });
         }
         // Cambiar a DESMONTADO/BAJA
@@ -234,6 +246,11 @@ export async function recalculatePanelMonth(
   }
 
   // 5. Sobrescribir billingMonthlyPanel y actualizar panels.estadoActual (TRANSACCIÓN)
+  // IMPORTANTE: Solo actualizamos panels.estadoActual si estamos recalculando el mes actual o más reciente
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const shouldUpdatePanelState = monthKey >= currentMonthKey; // Solo actualizar si es mes actual o futuro
+
   await db.runTransaction(async (transaction) => {
     const billingDocId = `${panelId}_${monthKey}`;
     const billingRef = db.collection("billingMonthlyPanel").doc(billingDocId);
@@ -253,17 +270,28 @@ export async function recalculatePanelMonth(
       schemaVersion: 1,
     });
 
-    // Actualizar el estado actual del panel
-    transaction.update(panelRef, {
-      estadoActual: currentState.estadoAlCierre,
-      updatedAt: admin.firestore.Timestamp.now(),
-    });
+    // Actualizar el estado actual del panel SOLO si estamos en el mes actual o futuro
+    if (shouldUpdatePanelState) {
+      transaction.update(panelRef, {
+        estadoActual: currentState.estadoAlCierre,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+      functions.logger.info(`[recalculatePanelMonth] panels.estadoActual actualizado a: ${currentState.estadoAlCierre}`);
+    } else {
+      functions.logger.info(`[recalculatePanelMonth] Mes histórico (${monthKey}), no se actualiza panels.estadoActual`);
+    }
 
-    functions.logger.info(`[recalculatePanelMonth] Transacción completada: billingMonthlyPanel y panels actualizados`);
+    functions.logger.info(`[recalculatePanelMonth] Transacción completada: billingMonthlyPanel actualizado`);
   });
 
-  // 6. Encolar tarea en update-summary para recalcular los totales del mes
-  await enqueueUpdateSummaryTask(monthKey);
+  // 6. Recalcular summary del mes sincrónicamente
+  try {
+    await recalculateSummary(monthKey);
+    functions.logger.info(`[recalculatePanelMonth] billingSummary actualizado para ${monthKey}`);
+  } catch (summaryError) {
+    functions.logger.error(`[recalculatePanelMonth] Error al actualizar summary:`, summaryError);
+    // No propagamos el error para no fallar todo el proceso
+  }
 
   functions.logger.info(`[recalculatePanelMonth] Recálculo completado para ${panelId} / ${monthKey}`);
 }
@@ -283,7 +311,7 @@ async function enqueueUpdateSummaryTask(monthKey: string): Promise<void> {
   }
 
   const parent = tasksClient.queuePath(project, location, queue);
-  const url = `https://${location}-${project}.cloudfunctions.net/updateSummary`;
+  const url = `https://${location}-${project}.cloudfunctions.net/updateSummaryTask`;
 
   // Usamos monthKey como taskId para deduplicación
   // Si hay múltiples recálculos en el mismo mes, solo se encola una tarea de summary

@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { recalculateSummary } from "../lib/summaryCalculations";
 
 interface UpdateSummaryPayload {
   monthKey: string;
@@ -90,93 +91,3 @@ export const updateSummaryTask = functions
       });
     }
   });
-
-/**
- * Recalcula el billingSummary de un mes basándose en los datos agregados
- * de billingMonthlyPanel y panelEvents.
- * 
- * NO usa FieldValue.increment() para evitar drift.
- * 
- * @param monthKey - Mes a recalcular en formato YYYY-MM
- */
-async function recalculateSummary(monthKey: string): Promise<void> {
-  const db = admin.firestore();
-
-  // 1. Consultar todos los billingMonthlyPanel del mes
-  const billingSnapshot = await db
-    .collection("billingMonthlyPanel")
-    .where("monthKey", "==", monthKey)
-    .get();
-
-  functions.logger.info(
-    `[recalculateSummary] Paneles encontrados para ${monthKey}: ${billingSnapshot.size}`
-  );
-
-  // 2. Calcular totales mediante agregación manual
-  let totalImporteMes = 0;
-  let totalPanelesFacturables = 0;
-  let panelesActivos = 0; // días >= 30
-  let panelesParciales = 0; // 0 < días < 30
-
-  for (const doc of billingSnapshot.docs) {
-    const data = doc.data();
-    const totalDiasFacturables = data.totalDiasFacturables || 0;
-    const totalImporte = data.totalImporte || 0;
-
-    // Acumular importe total
-    totalImporteMes += totalImporte;
-
-    // Contar paneles facturables (con importe > 0)
-    if (totalImporte > 0) {
-      totalPanelesFacturables++;
-    }
-
-    // Clasificar paneles según días facturables
-    if (totalDiasFacturables >= 30) {
-      panelesActivos++;
-    } else if (totalDiasFacturables > 0) {
-      panelesParciales++;
-    }
-  }
-
-  // Redondear totalImporteMes a 2 decimales
-  totalImporteMes = Math.round(totalImporteMes * 100) / 100;
-
-  functions.logger.info(
-    `[recalculateSummary] Totales calculados: ${totalImporteMes}€, ${totalPanelesFacturables} paneles, ` +
-    `${panelesActivos} activos, ${panelesParciales} parciales`
-  );
-
-  // 3. Contar total de eventos del mes (de todos los paneles)
-  // Usamos collectionGroup para consultar todos los panelEvents de todos los paneles
-  const eventsSnapshot = await db
-    .collectionGroup("panelEvents")
-    .where("monthKey", "==", monthKey)
-    .where("isDeleted", "==", false)
-    .get();
-
-  const totalEventos = eventsSnapshot.size;
-
-  functions.logger.info(`[recalculateSummary] Total eventos del mes: ${totalEventos}`);
-
-  // 4. Sobrescribir billingSummary/{monthKey} con valores exactos
-  const summaryRef = db.collection("billingSummary").doc(monthKey);
-
-  // Leer el documento actual para preservar isLocked si existe
-  const currentSummary = await summaryRef.get();
-  const isLocked = currentSummary.exists ? currentSummary.data()!.isLocked || false : false;
-
-  await summaryRef.set({
-    monthKey,
-    totalImporteMes,
-    totalPanelesFacturables,
-    panelesActivos,
-    panelesParciales,
-    totalEventos,
-    isLocked, // Preservar el estado de bloqueo
-    updatedAt: admin.firestore.Timestamp.now(),
-    schemaVersion: 1,
-  });
-
-  functions.logger.info(`[recalculateSummary] billingSummary/${monthKey} actualizado correctamente`);
-}

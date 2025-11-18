@@ -6,6 +6,10 @@
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db, callableFunction } from "./firebase";
 
+// Helpers internos de tiempo
+function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -88,6 +92,38 @@ export async function getMonthlyBilling(monthKey: string): Promise<BillingMonthl
 }
 
 // ============================================================================
+// BILLING - HELPERS
+// ============================================================================
+
+export async function getBillingForPanelMonth(panelId: string, monthKey: string): Promise<BillingMonthlyPanel | null> {
+  try {
+    const billingRef = doc(db, "billingMonthlyPanel", `${panelId}_${monthKey}`);
+    const snap = await getDoc(billingRef);
+    if (!snap.exists()) return null;
+    return snap.data() as BillingMonthlyPanel;
+  } catch (error) {
+    console.error("Error fetching panel month billing:", error);
+    throw error;
+  }
+}
+
+export async function waitForBillingUpdate(
+  panelId: string,
+  monthKey: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {}
+): Promise<BillingMonthlyPanel | null> {
+  const timeoutMs = opts.timeoutMs ?? 20000;
+  const intervalMs = opts.intervalMs ?? 1000;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const data = await getBillingForPanelMonth(panelId, monthKey);
+    if (data) return data;
+    await sleep(intervalMs);
+  }
+  return null;
+}
+
+// ============================================================================
 // PANEL EVENTS (CRUD)
 // ============================================================================
 
@@ -104,7 +140,12 @@ export async function requestPanelChange(data: {
   motivo?: string;
   snapshotBefore: any;
   snapshotAfter: any;
-}): Promise<{ status: string; eventId: string; idempotencyKey: string }> {
+}): Promise<{ status: string; eventId: string; idempotencyKey: string; totals?: {
+  totalDiasFacturables: number;
+  totalImporte: number;
+  estadoAlCierre: "ACTIVO" | "DESMONTADO" | "BAJA";
+  tarifaAplicada: number;
+} }> {
   const fn = callableFunction<typeof data, any>("requestPanelChange");
   const result = await fn(data);
   return result.data;
@@ -135,6 +176,30 @@ export async function deletePanelEvent(data: {
   eventId: string;
 }): Promise<{ success: boolean; eventId: string }> {
   const fn = callableFunction<typeof data, any>("deletePanelEvent");
+  const result = await fn(data);
+  return result.data;
+}
+
+/**
+ * Elimina todos los eventos de un panel en un mes y recalcula
+ */
+export async function deleteAllPanelEvents(data: {
+  panelId: string;
+  monthKey: string;
+}): Promise<{
+  success: boolean;
+  panelId: string;
+  monthKey: string;
+  deleted: number;
+  message: string;
+  totals?: {
+    totalDiasFacturables: number;
+    totalImporte: number;
+    estadoAlCierre: "ACTIVO" | "DESMONTADO" | "BAJA";
+    tarifaAplicada: number;
+  };
+}> {
+  const fn = callableFunction<typeof data, any>("deleteAllPanelEvents");
   const result = await fn(data);
   return result.data;
 }
@@ -195,5 +260,18 @@ export async function setUserRole(data: {
 }): Promise<{ success: boolean; uid: string; role: string }> {
   const fn = callableFunction<typeof data, any>("setUserRole");
   const result = await fn(data);
+  return result.data;
+}
+
+/**
+ * Regenera la facturación de un mes completo
+ */
+export async function regenerateMonthBilling(monthKey: string): Promise<{
+  success: boolean;
+  monthKey: string;
+  panelsProcessed: number;
+}> {
+  const fn = callableFunction<{ monthKey: string }, any>("regenerateMonthBilling");
+  const result = await fn({ monthKey });
   return result.data;
 }

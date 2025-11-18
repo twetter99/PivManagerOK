@@ -15,6 +15,7 @@ export { cleanupDuplicatePanels } from "./commands/cleanupDuplicatePanels";
 export { deleteMonthData } from "./commands/deleteMonthData";
 export { createNovemberTransitionEvents } from "./commands/createNovemberTransitionEvents";
 export { findGetafePanel } from "./commands/findGetafePanel";
+export { verifyOctoberEvents } from "./commands/verifyOctoberEvents";
 
 // ============================================================================
 // COMANDOS (Paso 3 - Patrón Asíncrono)
@@ -25,6 +26,7 @@ export { requestPanelChange } from "./commands/requestPanelChange";
 // COMANDOS (Paso 6 - Gestión de Eventos)
 // ============================================================================
 export { deletePanelEvent } from "./commands/deletePanelEvent";
+export { deleteAllPanelEvents } from "./commands/deleteAllPanelEvents";
 export { updatePanelEvent } from "./commands/updatePanelEvent";
 
 // ============================================================================
