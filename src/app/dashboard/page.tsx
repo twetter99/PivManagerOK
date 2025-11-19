@@ -104,6 +104,10 @@ export default function DashboardPage() {
           monthKey={monthKey}
           isLocked={isLocked}
           onMonthChange={handleMonthChange}
+          onDataRefresh={() => {
+            getSummary(monthKey).then(setSummary).catch(console.error);
+            getMonthlyBilling(monthKey).then(setPanels).catch(console.error);
+          }}
         />
 
         {/* Aviso si mes bloqueado */}

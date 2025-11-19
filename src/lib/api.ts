@@ -3,7 +3,7 @@
  * Connects to Firebase Cloud Functions
  */
 
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, callableFunction } from "./firebase";
 
 // Helpers internos de tiempo
@@ -272,6 +272,61 @@ export async function regenerateMonthBilling(monthKey: string): Promise<{
   panelsProcessed: number;
 }> {
   const fn = callableFunction<{ monthKey: string }, any>("regenerateMonthBilling");
+  const result = await fn({ monthKey });
+  return result.data;
+}
+
+/**
+ * Crea el mes siguiente heredando estados del mes anterior
+ */
+export async function createNextMonth(monthKey: string): Promise<{
+  success: boolean;
+  monthKey: string;
+  panelsCreated: number;
+  previousMonthKey: string;
+}> {
+  const fn = callableFunction<{ monthKey: string }, any>("createNextMonth");
+  const result = await fn({ monthKey });
+  return result.data;
+}
+
+/**
+ * Cierra o abre un mes (toggle isLocked)
+ */
+export async function toggleMonthLock(monthKey: string, isLocked: boolean): Promise<{
+  success: boolean;
+  monthKey: string;
+  isLocked: boolean;
+}> {
+  const fn = callableFunction<{ monthKey: string; isLocked: boolean }, any>("toggleMonthLock");
+  const result = await fn({ monthKey, isLocked });
+  return result.data;
+}
+
+/**
+ * Elimina un mes completo (billing, events, summary)
+ */
+export async function deleteMonth(monthKey: string): Promise<{
+  success: boolean;
+  monthKey: string;
+  deleted: { panels: number; events: number; summary: number };
+}> {
+  const fn = callableFunction<{ monthKey: string }, any>("deleteMonth");
+  const result = await fn({ monthKey });
+  return result.data;
+}
+
+/**
+ * Resincroniza un mes heredando estados del mes anterior
+ */
+export async function resyncMonthFromPrevious(monthKey: string): Promise<{
+  success: boolean;
+  monthKey: string;
+  previousMonthKey: string;
+  panelsUpdated: number;
+  panelsRecalculated: number;
+}> {
+  const fn = callableFunction<{ monthKey: string }, any>("resyncMonthFromPrevious");
   const result = await fn({ monthKey });
   return result.data;
 }

@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { importBaseMonth, regenerateMonthBilling } from "@/lib/api";
 
 interface AdminSectionProps {
@@ -326,59 +326,436 @@ export default function AdminSection({
 
       <RegenerateMonthSection monthKey={monthKey} />
 
-      {/* Close month (manual trigger opcional - closeMonthJob se ejecuta automáticamente) */}
-      <div>
-        <label
-          style={{
-            display: "block",
-            fontSize: "14px",
-            fontWeight: 500,
-            color: "#000",
-            marginBottom: "8px",
-          }}
-        >
-          Cerrar mes
-        </label>
+      {/* Crear mes siguiente */}
+      <CreateNextMonthSection monthKey={monthKey} isLocked={isLocked} />
 
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#A3A3A3",
-            marginBottom: "8px",
-          }}
-        >
-          El cierre automático se ejecuta el día 1 de cada mes a las 02:00 AM.
-          Una vez cerrado, no se pueden crear ni modificar eventos.
-        </p>
+      {/* Toggle cerrar/abrir mes */}
+      <ToggleMonthLockSection monthKey={monthKey} isLocked={isLocked} onMonthClosed={onMonthClosed} />
 
-        {isLocked ? (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#595959",
-              backgroundColor: "#F7F7F7",
-              padding: "8px 12px",
-              border: "1px solid #EAEAEA",
-              borderRadius: "2px",
-            }}
-          >
-            Este mes está cerrado. No se puede ejecutar el cierre manualmente.
-          </p>
-        ) : (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#595959",
-              backgroundColor: "#F7F7F7",
-              padding: "8px 12px",
-              border: "1px solid #EAEAEA",
-              borderRadius: "2px",
-            }}
-          >
-            Este mes aún no está cerrado. El cierre se realizará automáticamente.
-          </p>
-        )}
-      </div>
+      {/* Resincronizar desde mes anterior */}
+      <ResyncMonthSection monthKey={monthKey} isLocked={isLocked} />
+
+      {/* Eliminar mes */}
+      <DeleteMonthSection monthKey={monthKey} isLocked={isLocked} />
+    </div>
+  );
+}
+
+/**
+ * CreateNextMonthSection Component
+ * Crea el mes siguiente heredando estados
+ */
+function CreateNextMonthSection({ monthKey, isLocked }: { monthKey: string; isLocked: boolean }) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<any | null>(null);
+
+  const handleCreate = async () => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonthKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+
+    if (!confirm(
+      `📅 CREAR MES: ${nextMonthKey}\n\n` +
+      `Se creará el mes siguiente heredando los estados de ${monthKey}:\n\n` +
+      `• Paneles ACTIVOS → Facturarán 30 días (mes completo)\n` +
+      `• Paneles DESMONTADOS → No facturan (pueden reinstalarse)\n` +
+      `• Paneles BAJA → No facturan (dados de baja)\n\n` +
+      `Los paneles ACTIVOS se facturarán automáticamente a menos que agregues eventos que los cambien.\n\n` +
+      `¿Continuar?`
+    )) {
+      return;
+    }
+
+    setIsCreating(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { createNextMonth } = await import("@/lib/api");
+      const result = await createNextMonth(nextMonthKey);
+      setSuccess(result);
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message || "Error al crear el mes");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: "#000",
+          marginBottom: "8px",
+        }}
+      >
+        📅 Crear mes siguiente
+      </label>
+
+      <p style={{ fontSize: "12px", color: "#A3A3A3", marginBottom: "12px" }}>
+        Crea el mes siguiente heredando los estados de cierre del mes actual.
+        Los paneles empezarán con 0 días y 0€, listos para agregar eventos.
+      </p>
+
+      <button
+        onClick={handleCreate}
+        disabled={isCreating || isLocked}
+        style={{
+          padding: "8px 16px",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: isCreating || isLocked ? "#A3A3A3" : "#FFF",
+          backgroundColor: isCreating || isLocked ? "#F0F0F0" : "#1890FF",
+          border: "none",
+          borderRadius: "2px",
+          cursor: isCreating || isLocked ? "not-allowed" : "pointer",
+        }}
+      >
+        {isCreating ? "Creando..." : "Crear mes siguiente"}
+      </button>
+
+      {error && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#EF4444", backgroundColor: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: "2px" }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#10B981", backgroundColor: "#F0FDF4", border: "1px solid #D1FAE5", borderRadius: "2px" }}>
+          ✓ Mes {success.monthKey} creado con {success.panelsCreated} paneles. Recargando...
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ToggleMonthLockSection Component
+ * Cerrar/Abrir mes manualmente
+ */
+function ToggleMonthLockSection({ monthKey, isLocked, onMonthClosed }: { monthKey: string; isLocked: boolean; onMonthClosed?: () => void }) {
+  const [isToggling, setIsToggling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nextMonthExists, setNextMonthExists] = useState(false);
+
+  // Verificar si existe mes siguiente
+  useEffect(() => {
+    const checkNextMonth = async () => {
+      const [year, month] = monthKey.split("-").map(Number);
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      const nextMonthKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+
+      try {
+        const { getSummary } = await import("@/lib/api");
+        const summary = await getSummary(nextMonthKey);
+        setNextMonthExists(!!summary);
+      } catch {
+        setNextMonthExists(false);
+      }
+    };
+    checkNextMonth();
+  }, [monthKey]);
+
+  const handleToggle = async () => {
+    const action = isLocked ? "ABRIR" : "CERRAR";
+    
+    // Advertencia especial si se está abriendo y existe mes siguiente
+    if (!isLocked && nextMonthExists) {
+      const [year, month] = monthKey.split("-").map(Number);
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      const nextMonthKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+
+      if (!confirm(
+        `⚠️ ADVERTENCIA IMPORTANTE\n\n` +
+        `El mes siguiente (${nextMonthKey}) ya existe.\n\n` +
+        `Si abres ${monthKey} y haces cambios:\n` +
+        `• Los cambios NO se sincronizarán automáticamente a ${nextMonthKey}\n` +
+        `• Después deberás usar "🔄 Resincronizar desde mes anterior"\n\n` +
+        `¿Estás seguro de abrir ${monthKey}?`
+      )) {
+        return;
+      }
+    }
+    
+    if (!confirm(
+      `🔒 ${action} MES: ${monthKey}\n\n` +
+      (isLocked 
+        ? `Al abrir el mes podrás:\n• Crear eventos nuevos\n• Modificar eventos existentes\n• Eliminar eventos\n\n¿Continuar?`
+        : `Al cerrar el mes:\n• NO se podrán crear eventos nuevos\n• NO se podrán modificar eventos\n• NO se podrán eliminar eventos\n\nSolo cierra cuando la facturación esté correcta.\n\n¿Continuar?`
+      )
+    )) {
+      return;
+    }
+
+    setIsToggling(true);
+    setError(null);
+
+    try {
+      const { toggleMonthLock } = await import("@/lib/api");
+      await toggleMonthLock(monthKey, !isLocked);
+      
+      if (!isLocked && onMonthClosed) {
+        onMonthClosed();
+      }
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err: any) {
+      setError(err.message || "Error al cambiar el estado del mes");
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: "#000",
+          marginBottom: "8px",
+        }}
+      >
+        🔒 {isLocked ? "Abrir mes" : "Cerrar mes"}
+      </label>
+
+      <p style={{ fontSize: "12px", color: "#A3A3A3", marginBottom: "12px" }}>
+        {isLocked 
+          ? "El mes está cerrado. Ábrelo para poder modificar eventos."
+          : "Cierra el mes cuando la facturación esté correcta. No se podrán hacer cambios después."
+        }
+      </p>
+
+      <button
+        onClick={handleToggle}
+        disabled={isToggling}
+        style={{
+          padding: "8px 16px",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: isToggling ? "#A3A3A3" : "#FFF",
+          backgroundColor: isToggling ? "#F0F0F0" : isLocked ? "#52C41A" : "#FF4D4F",
+          border: "none",
+          borderRadius: "2px",
+          cursor: isToggling ? "not-allowed" : "pointer",
+        }}
+      >
+        {isToggling ? "Procesando..." : isLocked ? "🔓 Abrir mes" : "🔒 Cerrar mes"}
+      </button>
+
+      {error && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#EF4444", backgroundColor: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: "2px" }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ResyncMonthSection Component
+ * Resincroniza el mes actual desde el mes anterior
+ */
+function ResyncMonthSection({ monthKey, isLocked }: { monthKey: string; isLocked: boolean }) {
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<any | null>(null);
+
+  const handleResync = async () => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonthKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+
+    if (!confirm(
+      `🔄 RESINCRONIZAR ${monthKey}\n\n` +
+      `Heredará los estados de cierre de ${prevMonthKey}:\n\n` +
+      `• Actualizará estadoAlCierre de cada panel\n` +
+      `• Recalculará la facturación\n` +
+      `• NO tocará los eventos existentes en ${monthKey}\n\n` +
+      `Útil cuando corriges ${prevMonthKey} y necesitas actualizar ${monthKey}.\n\n` +
+      `¿Continuar?`
+    )) {
+      return;
+    }
+
+    setIsResyncing(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { resyncMonthFromPrevious } = await import("@/lib/api");
+      const result = await resyncMonthFromPrevious(monthKey);
+      setSuccess(result);
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message || "Error al resincronizar el mes");
+    } finally {
+      setIsResyncing(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: "#000",
+          marginBottom: "8px",
+        }}
+      >
+        🔄 Resincronizar desde mes anterior
+      </label>
+
+      <p style={{ fontSize: "12px", color: "#A3A3A3", marginBottom: "12px" }}>
+        Actualiza los estados de cierre heredándolos del mes anterior.
+        Útil después de corregir el mes anterior.
+      </p>
+
+      <button
+        onClick={handleResync}
+        disabled={isResyncing || isLocked}
+        style={{
+          padding: "8px 16px",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: isResyncing || isLocked ? "#A3A3A3" : "#FFF",
+          backgroundColor: isResyncing || isLocked ? "#F0F0F0" : "#FA8C16",
+          border: "none",
+          borderRadius: "2px",
+          cursor: isResyncing || isLocked ? "not-allowed" : "pointer",
+        }}
+      >
+        {isResyncing ? "Resincronizando..." : "Resincronizar mes"}
+      </button>
+
+      {error && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#EF4444", backgroundColor: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: "2px" }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#10B981", backgroundColor: "#F0FDF4", border: "1px solid #D1FAE5", borderRadius: "2px" }}>
+          ✓ {success.panelsUpdated} paneles actualizados, {success.panelsRecalculated} recalculados. Recargando...
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * DeleteMonthSection Component
+ * Elimina un mes completo
+ */
+function DeleteMonthSection({ monthKey, isLocked }: { monthKey: string; isLocked: boolean }) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!confirm(
+      `🗑️ ELIMINAR MES: ${monthKey}\n\n` +
+      `⚠️ ESTA OPERACIÓN NO SE PUEDE DESHACER ⚠️\n\n` +
+      `Se eliminarán permanentemente:\n` +
+      `• Todos los billingMonthlyPanel del mes\n` +
+      `• Todos los panelEvents del mes\n` +
+      `• El billingSummary del mes\n\n` +
+      `Úsalo cuando necesites recrear el mes desde cero.\n\n` +
+      `Escribe "ELIMINAR" para confirmar.`
+    )) {
+      return;
+    }
+
+    const confirmText = prompt(`Escribe "ELIMINAR" en mayúsculas para confirmar:`);
+    if (confirmText !== "ELIMINAR") {
+      alert("Operación cancelada. Confirmación incorrecta.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+
+    try {
+      const { deleteMonth } = await import("@/lib/api");
+      await deleteMonth(monthKey);
+      
+      alert(`✓ Mes ${monthKey} eliminado correctamente`);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err: any) {
+      setError(err.message || "Error al eliminar el mes");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "#FFF1F0", border: "1px solid #FFCCC7", borderRadius: "4px" }}>
+      <label
+        style={{
+          display: "block",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: "#CF1322",
+          marginBottom: "8px",
+        }}
+      >
+        🗑️ Eliminar mes (⚠️ Peligroso)
+      </label>
+
+      <p style={{ fontSize: "12px", color: "#8C1F1F", marginBottom: "12px" }}>
+        Elimina completamente este mes. No se puede deshacer.
+        Útil para recrear el mes desde cero.
+      </p>
+
+      <button
+        onClick={handleDelete}
+        disabled={isDeleting || isLocked}
+        style={{
+          padding: "8px 16px",
+          fontSize: "14px",
+          fontWeight: 500,
+          color: isDeleting || isLocked ? "#A3A3A3" : "#FFF",
+          backgroundColor: isDeleting || isLocked ? "#F0F0F0" : "#FF4D4F",
+          border: "none",
+          borderRadius: "2px",
+          cursor: isDeleting || isLocked ? "not-allowed" : "pointer",
+        }}
+      >
+        {isDeleting ? "Eliminando..." : "🗑️ Eliminar mes"}
+      </button>
+
+      {isLocked && (
+        <div style={{ marginTop: "8px", fontSize: "11px", color: "#A3A3A3" }}>
+          ℹ️ Debes abrir el mes antes de eliminarlo (medida de seguridad)
+        </div>
+      )}
+
+      {error && (
+        <div style={{ marginTop: "8px", padding: "8px", fontSize: "12px", color: "#EF4444", backgroundColor: "#FEF2F2", border: "1px solid #FEE2E2", borderRadius: "2px" }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

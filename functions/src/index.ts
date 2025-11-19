@@ -8,6 +8,10 @@ admin.initializeApp();
 // ============================================================================
 export { setUserRole } from "./admin/setUserRole";
 export { importBaseMonth } from "./admin/importBaseMonth";
+export { createNextMonth } from "./admin/createNextMonth";
+export { toggleMonthLock } from "./admin/toggleMonthLock";
+export { deleteMonth } from "./admin/deleteMonth";
+export { resyncMonthFromPrevious } from "./admin/resyncMonthFromPrevious";
 export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
 export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
 export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
@@ -40,9 +44,9 @@ export { processPanelEventTask } from "./workers/processPanelEventTask";
 export { updateSummaryTask } from "./workers/updateSummaryTask";
 
 // ============================================================================
-// SCHEDULED JOBS (Paso 6 - Cierre Automático de Mes)
+// SCHEDULED JOBS (ELIMINADO - Cierre manual desde frontend)
 // ============================================================================
-export { closeMonthJob } from "./scheduled/closeMonthJob";
+// export { closeMonthJob } from "./scheduled/closeMonthJob"; // DESHABILITADO
 
 // ============================================================================
 // REPORTES (Paso 7)
