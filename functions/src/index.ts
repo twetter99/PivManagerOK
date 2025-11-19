@@ -12,6 +12,7 @@ export { createNextMonth } from "./admin/createNextMonth";
 export { toggleMonthLock } from "./admin/toggleMonthLock";
 export { deleteMonth } from "./admin/deleteMonth";
 export { resyncMonthFromPrevious } from "./admin/resyncMonthFromPrevious";
+export { updateYearlyRate } from "./admin/updateYearlyRate";
 export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
 export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
 export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
