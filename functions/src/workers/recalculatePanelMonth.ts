@@ -72,22 +72,14 @@ export async function recalculatePanelMonth(
   if (previousBillingDoc.exists) {
     const prevData = previousBillingDoc.data()!;
     
-    // LÓGICA DE TRANSICIÓN ANUAL
-    const prevYear = previousMonthKey.split("-")[0];
-    let tarifaAUsar: number;
+    // HERENCIA ESTRICTA: Siempre heredar tarifa del mes anterior
+    const tarifaHeredada = prevData.tarifaAplicada || standardRate;
 
-    if (prevYear !== targetYear) {
-      // CAMBIO DE AÑO: Resetear a tarifa estándar del nuevo año
-      tarifaAUsar = standardRate;
-      functions.logger.warn(
-        `[recalculatePanelMonth] ⚡ Reseteo por Cambio de Año: ${prevYear} → ${targetYear}. ` +
-        `Tarifa anterior: ${prevData.tarifaAplicada || "N/A"}€, nueva tarifa: ${tarifaAUsar}€`
-      );
-    } else {
-      // MISMO AÑO: Heredar tarifa del mes anterior (respeta cambios manuales)
-      tarifaAUsar = prevData.tarifaAplicada || standardRate;
+    // Auditoría: Log si se está respetando un precio personalizado
+    if (tarifaHeredada !== standardRate) {
       functions.logger.info(
-        `[recalculatePanelMonth] Mismo año, heredando tarifa: ${tarifaAUsar}€`
+        `[recalculatePanelMonth] 💰 Precio personalizado heredado: ${tarifaHeredada}€ ` +
+        `(tarifa estándar ${targetYear}: ${standardRate}€)`
       );
     }
 
@@ -95,7 +87,7 @@ export async function recalculatePanelMonth(
       totalDiasFacturables: 0, // Siempre empezamos desde 0 para el nuevo mes
       totalImporte: 0,
       estadoAlCierre: prevData.estadoAlCierre || "ACTIVO",
-      tarifaAplicada: tarifaAUsar,
+      tarifaAplicada: tarifaHeredada,
     };
     functions.logger.info(
       `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa aplicada: ${initialState.tarifaAplicada}€`
