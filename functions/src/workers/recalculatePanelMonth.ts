@@ -9,6 +9,7 @@ import {
   getNewPanelState,
 } from "../lib/billingRules";
 import { recalculateSummary } from "../lib/summaryCalculations";
+import { getStandardRateForYear } from "../lib/rateService";
 
 interface PanelEventData {
   action: string;
@@ -53,6 +54,11 @@ export async function recalculatePanelMonth(
 
   functions.logger.info(`[recalculatePanelMonth] Iniciando recálculo: ${panelId} / ${monthKey}`);
 
+  // 0. Obtener tarifa estándar del año objetivo
+  const targetYear = monthKey.split("-")[0];
+  const standardRate = await getStandardRateForYear(targetYear);
+  functions.logger.info(`[recalculatePanelMonth] Tarifa base para ${targetYear}: ${standardRate}€`);
+
   // 1. Leer el billingMonthlyPanel del mes anterior (N-1) para obtener el estado inicial
   const previousMonthKey = getPreviousMonthKey(monthKey);
   const previousBillingDocId = `${panelId}_${previousMonthKey}`;
@@ -65,14 +71,34 @@ export async function recalculatePanelMonth(
 
   if (previousBillingDoc.exists) {
     const prevData = previousBillingDoc.data()!;
+    
+    // LÓGICA DE TRANSICIÓN ANUAL
+    const prevYear = previousMonthKey.split("-")[0];
+    let tarifaAUsar: number;
+
+    if (prevYear !== targetYear) {
+      // CAMBIO DE AÑO: Resetear a tarifa estándar del nuevo año
+      tarifaAUsar = standardRate;
+      functions.logger.warn(
+        `[recalculatePanelMonth] ⚡ Reseteo por Cambio de Año: ${prevYear} → ${targetYear}. ` +
+        `Tarifa anterior: ${prevData.tarifaAplicada || "N/A"}€, nueva tarifa: ${tarifaAUsar}€`
+      );
+    } else {
+      // MISMO AÑO: Heredar tarifa del mes anterior (respeta cambios manuales)
+      tarifaAUsar = prevData.tarifaAplicada || standardRate;
+      functions.logger.info(
+        `[recalculatePanelMonth] Mismo año, heredando tarifa: ${tarifaAUsar}€`
+      );
+    }
+
     initialState = {
       totalDiasFacturables: 0, // Siempre empezamos desde 0 para el nuevo mes
       totalImporte: 0,
       estadoAlCierre: prevData.estadoAlCierre || "ACTIVO",
-      tarifaAplicada: 37.70, // Usar tarifa estándar 2025, NO heredar ni leer del panel
+      tarifaAplicada: tarifaAUsar,
     };
     functions.logger.info(
-      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa estándar: ${initialState.tarifaAplicada}`
+      `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa aplicada: ${initialState.tarifaAplicada}€`
     );
   } else {
     // No hay mes anterior: panel nuevo o primer mes
@@ -81,10 +107,10 @@ export async function recalculatePanelMonth(
       totalDiasFacturables: 0,
       totalImporte: 0,
       estadoAlCierre: "ACTIVO", // Por defecto, un panel sin historial se asume ACTIVO
-      tarifaAplicada: 37.70, // Usar tarifa estándar 2025
+      tarifaAplicada: standardRate, // Usar tarifa estándar del año objetivo
     };
     functions.logger.info(
-      `[recalculatePanelMonth] Sin mes anterior. Estado inicial por defecto: ACTIVO, tarifa estándar: ${initialState.tarifaAplicada}`
+      `[recalculatePanelMonth] Sin mes anterior. Estado inicial por defecto: ACTIVO, tarifa estándar: ${initialState.tarifaAplicada}€`
     );
   }
 
