@@ -56,11 +56,13 @@ service cloud.firestore {
     }
     
     // =============================================================================
-    // COLECCIÓN: rates (BLOQUEADA PARA EL CLIENTE)
+    // COLECCIÓN: rates (LECTURA PERMITIDA, ESCRITURA BLOQUEADA)
     // =============================================================================
-    // Catálogo de tarifas. Solo el backend gestiona las tarifas.
+    // Catálogo de tarifas. Los clientes autenticados pueden leer.
+    // Solo el backend (Cloud Functions) puede escribir para garantizar integridad.
     match /rates/{rateId} {
-      allow read, write: if false;
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
     
     // =============================================================================

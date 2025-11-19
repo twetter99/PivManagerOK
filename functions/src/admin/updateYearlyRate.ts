@@ -85,9 +85,78 @@ export const updateYearlyRate = functions
         `[updateYearlyRate] Tarifa ${year} actualizada a ${amount}€ por ${userEmail}`
       );
 
+      // 5. PROPAGACIÓN AUTOMÁTICA: Actualizar Enero del año objetivo
+      let panelsUpdated = 0;
+      const targetMonthKey = `${year}-01`; // Enero del año modificado
+
+      try {
+        // Buscar todos los billingMonthlyPanel de Enero de ese año
+        const billingSnapshot = await db
+          .collection("billingMonthlyPanel")
+          .where("monthKey", "==", targetMonthKey)
+          .get();
+
+        if (!billingSnapshot.empty) {
+          functions.logger.info(
+            `[updateYearlyRate] Propagando tarifa a ${billingSnapshot.size} paneles de ${targetMonthKey}`
+          );
+
+          // Usar batch para actualización masiva (máx 500 por batch)
+          const batchSize = 500;
+          let batch = db.batch();
+          let batchCount = 0;
+
+          for (const doc of billingSnapshot.docs) {
+            const docData = doc.data();
+            const diasFacturables = docData.totalDiasFacturables || 0;
+
+            // Recalcular importe: (dias / 30) * nuevaTarifa
+            const nuevoImporte = (diasFacturables / 30) * amount;
+
+            batch.update(doc.ref, {
+              tarifaAplicada: amount,
+              totalImporte: nuevoImporte,
+              updatedAt: now,
+              updatedBy: `auto:${userEmail}`,
+            });
+
+            batchCount++;
+            panelsUpdated++;
+
+            // Commit batch cada 500 operaciones
+            if (batchCount >= batchSize) {
+              await batch.commit();
+              batch = db.batch();
+              batchCount = 0;
+            }
+          }
+
+          // Commit batch final
+          if (batchCount > 0) {
+            await batch.commit();
+          }
+
+          functions.logger.info(
+            `[updateYearlyRate] ✅ Propagación completada: ${panelsUpdated} paneles actualizados en ${targetMonthKey}`
+          );
+        } else {
+          functions.logger.info(
+            `[updateYearlyRate] ℹ️ No se encontraron paneles en ${targetMonthKey} (mes aún no creado)`
+          );
+        }
+      } catch (propagationError: any) {
+        functions.logger.error(
+          `[updateYearlyRate] ⚠️ Error en propagación automática: ${propagationError.message}`
+        );
+        // No fallar la operación principal si la propagación falla
+      }
+
       return {
         success: true,
-        message: `Tarifa ${year} actualizada correctamente`,
+        message:
+          panelsUpdated > 0
+            ? `Tarifa ${year} guardada y propagada a ${panelsUpdated} paneles de ${targetMonthKey}`
+            : `Tarifa ${year} guardada correctamente`,
         year,
         amount,
         updatedAt: now,

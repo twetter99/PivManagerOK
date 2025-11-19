@@ -26,6 +26,11 @@ export default function YearlyRatesManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Estados para creación de nuevo año
+  const [isCreating, setIsCreating] = useState(false);
+  const [newYear, setNewYear] = useState<string>("");
+  const [newAmount, setNewAmount] = useState<string>("");
 
   const currentYear = new Date().getFullYear();
 
@@ -66,6 +71,71 @@ export default function YearlyRatesManager() {
     setEditAmount("");
     setError(null);
     setSuccess(null);
+  };
+
+  const handleStartCreate = () => {
+    setIsCreating(true);
+    setNewYear("");
+    setNewAmount("");
+    setError(null);
+    setSuccess(null);
+    setEditingYear(null); // Cancelar edición si está activa
+  };
+
+  const handleCancelCreate = () => {
+    setIsCreating(false);
+    setNewYear("");
+    setNewAmount("");
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleCreateSave = async () => {
+    // Validaciones
+    if (!newYear || !/^\d{4}$/.test(newYear)) {
+      setError("El año debe ser un valor de 4 dígitos (ej: 2027)");
+      return;
+    }
+
+    const amount = parseFloat(newAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setError("El importe debe ser un número positivo");
+      return;
+    }
+
+    // Verificar que el año no exista ya
+    if (rates.some((r) => r.year === newYear)) {
+      setError(`El año ${newYear} ya existe. Usa el botón Editar para modificarlo.`);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const updateRateFn = httpsCallable<
+        { year: string; amount: number },
+        { success: boolean; message: string }
+      >(functions, "updateYearlyRate");
+
+      const result = await updateRateFn({ year: newYear, amount });
+
+      if (result.data.success) {
+        setSuccess(`Tarifa ${newYear} creada con ${amount.toFixed(2)}€`);
+        await loadRates();
+        setIsCreating(false);
+        setNewYear("");
+        setNewAmount("");
+
+        setTimeout(() => setSuccess(null), 3000);
+      }
+    } catch (err: any) {
+      console.error("Error creando tarifa:", err);
+      setError(err.message || "Error al crear tarifa");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async (year: string) => {
@@ -141,16 +211,48 @@ export default function YearlyRatesManager() {
 
   return (
     <div>
-      <h3
+      <div
         style={{
-          fontSize: "15px",
-          fontWeight: 600,
-          color: "#000",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: "16px",
         }}
       >
-        💰 Tarifas Anuales
-      </h3>
+        <h3
+          style={{
+            fontSize: "15px",
+            fontWeight: 600,
+            color: "#000",
+            margin: 0,
+          }}
+        >
+          💰 Tarifas Anuales
+        </h3>
+
+        {!isCreating && (
+          <button
+            onClick={handleStartCreate}
+            disabled={saving || editingYear !== null}
+            style={{
+              padding: "8px 16px",
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "#FFF",
+              backgroundColor: saving || editingYear ? "#CCC" : "#52C41A",
+              border: "none",
+              borderRadius: "2px",
+              cursor: saving || editingYear ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span style={{ fontSize: "14px" }}>+</span>
+            <span>Añadir Año</span>
+          </button>
+        )}
+      </div>
 
       <p
         style={{
@@ -254,6 +356,93 @@ export default function YearlyRatesManager() {
           </tr>
         </thead>
         <tbody>
+          {/* Fila de creación */}
+          {isCreating && (
+            <tr
+              style={{
+                backgroundColor: "#F6FFED",
+                borderBottom: "2px solid #52C41A",
+              }}
+            >
+              <td style={{ padding: "12px" }}>
+                <input
+                  type="text"
+                  placeholder="Ej: 2027"
+                  value={newYear}
+                  onChange={(e) => setNewYear(e.target.value)}
+                  disabled={saving}
+                  maxLength={4}
+                  style={{
+                    width: "80px",
+                    padding: "6px 8px",
+                    fontSize: "13px",
+                    border: "1px solid #52C41A",
+                    borderRadius: "2px",
+                  }}
+                  autoFocus
+                />
+              </td>
+              <td style={{ padding: "12px", textAlign: "right" }}>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Ej: 39.50"
+                  value={newAmount}
+                  onChange={(e) => setNewAmount(e.target.value)}
+                  disabled={saving}
+                  style={{
+                    width: "100px",
+                    padding: "6px 8px",
+                    fontSize: "13px",
+                    border: "1px solid #52C41A",
+                    borderRadius: "2px",
+                    textAlign: "right",
+                  }}
+                />
+              </td>
+              <td style={{ padding: "12px", fontSize: "12px", color: "#52C41A", fontWeight: 500 }}>
+                🆕 Nuevo
+              </td>
+              <td style={{ padding: "12px", textAlign: "center" }}>
+                <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                  <button
+                    onClick={handleCreateSave}
+                    disabled={saving}
+                    style={{
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      color: "#FFF",
+                      backgroundColor: saving ? "#CCC" : "#52C41A",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: saving ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {saving ? "..." : "Crear"}
+                  </button>
+                  <button
+                    onClick={handleCancelCreate}
+                    disabled={saving}
+                    style={{
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      color: "#595959",
+                      backgroundColor: "#FFF",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: saving ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </td>
+            </tr>
+          )}
+
+          {/* Filas de tarifas existentes */}
           {rates.map((rate) => {
             const yearNum = parseInt(rate.year);
             const isEditing = editingYear === rate.year;

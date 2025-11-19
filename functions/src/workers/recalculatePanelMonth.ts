@@ -72,22 +72,35 @@ export async function recalculatePanelMonth(
   if (previousBillingDoc.exists) {
     const prevData = previousBillingDoc.data()!;
     
-    // HERENCIA ESTRICTA: Siempre heredar tarifa del mes anterior
-    const tarifaHeredada = prevData.tarifaAplicada || standardRate;
+    // PRIORIDAD ANUAL: Detectar cambio de año para forzar actualización automática
+    const prevYear = previousMonthKey.split("-")[0];
+    let tarifaAUsar: number;
 
-    // Auditoría: Log si se está respetando un precio personalizado
-    if (tarifaHeredada !== standardRate) {
-      functions.logger.info(
-        `[recalculatePanelMonth] 💰 Precio personalizado heredado: ${tarifaHeredada}€ ` +
-        `(tarifa estándar ${targetYear}: ${standardRate}€)`
+    if (prevYear !== targetYear) {
+      // CAMBIO DE AÑO: Forzar tarifa del nuevo año (actualización automática)
+      tarifaAUsar = standardRate;
+      functions.logger.warn(
+        `[recalculatePanelMonth] 🔄 Actualización Automática por Cambio de Año: ${prevYear} → ${targetYear}. ` +
+        `Tarifa anterior: ${prevData.tarifaAplicada || "N/A"}€, nueva tarifa: ${tarifaAUsar}€`
       );
+    } else {
+      // MISMO AÑO: Heredar tarifa (respeta personalizaciones manuales)
+      tarifaAUsar = prevData.tarifaAplicada || standardRate;
+      
+      // Auditoría: Log si se está respetando un precio personalizado
+      if (tarifaAUsar !== standardRate) {
+        functions.logger.info(
+          `[recalculatePanelMonth] 💰 Precio personalizado heredado: ${tarifaAUsar}€ ` +
+          `(tarifa estándar ${targetYear}: ${standardRate}€)`
+        );
+      }
     }
 
     initialState = {
       totalDiasFacturables: 0, // Siempre empezamos desde 0 para el nuevo mes
       totalImporte: 0,
       estadoAlCierre: prevData.estadoAlCierre || "ACTIVO",
-      tarifaAplicada: tarifaHeredada,
+      tarifaAplicada: tarifaAUsar,
     };
     functions.logger.info(
       `[recalculatePanelMonth] Estado inicial desde mes anterior: ${prevData.estadoAlCierre}, tarifa aplicada: ${initialState.tarifaAplicada}€`
