@@ -3,6 +3,7 @@ import * as admin from "firebase-admin";
 import { assertIsAdmin } from "../lib/utils";
 import { z } from "zod";
 import { recalculatePanelMonth } from "../workers/recalculatePanelMonth";
+import { eurosToCents, centsToEuros, sumImportesCents } from "../lib/moneyUtils";
 
 /**
  * Schema de validación para regenerateMonthBilling
@@ -120,7 +121,7 @@ export const regenerateMonthBilling = functions
         .where("monthKey", "==", monthKey)
         .get();
 
-      let totalImporteMes = 0;
+      const importesCents: number[] = [];
       let totalPanelesFacturables = 0;
       let panelesActivos = 0;
       let panelesParciales = 0;
@@ -130,9 +131,8 @@ export const regenerateMonthBilling = functions
         const diasFacturables = data.totalDiasFacturables || 0;
         const importe = data.totalImporte || 0;
 
-        totalImporteMes += importe;
-        
         if (importe > 0) {
+          importesCents.push(eurosToCents(importe));
           totalPanelesFacturables++;
         }
 
@@ -143,8 +143,10 @@ export const regenerateMonthBilling = functions
         }
       }
 
-      // Redondear a 2 decimales
-      totalImporteMes = Math.round(totalImporteMes * 100) / 100;
+      // Sumar con precisión de céntimos y normalizar a 2 decimales
+      // Consistente con summaryCalculations.ts
+      const totalImporteCents = sumImportesCents(importesCents);
+      const totalImporteMes = Math.round(centsToEuros(totalImporteCents) * 100) / 100;
 
       // Nota: totalEventos se calcula posteriormente de forma asíncrona por updateSummaryTask
       const totalEventos = 0;

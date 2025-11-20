@@ -10,13 +10,14 @@ import {
 } from "../lib/billingRules";
 import { recalculateSummary } from "../lib/summaryCalculations";
 import { getStandardRateForYear } from "../lib/rateService";
+import { PanelSnapshot } from "../lib/schemas";
 
 interface PanelEventData {
   action: string;
   effectiveDateLocal: string;
   motivo?: string;
-  snapshotBefore: any;
-  snapshotAfter: any;
+  snapshotBefore: PanelSnapshot | null;
+  snapshotAfter: PanelSnapshot | null;
   idempotencyKey: string;
 }
 
@@ -206,8 +207,9 @@ export async function recalculatePanelMonth(
         currentState.estadoAlCierre = estadoActual;
       } else if (event.action === "CAMBIO_TARIFA") {
         // Actualizar tarifa sin afectar períodos
-        if (event.snapshotAfter?.tarifaBaseMes) {
-          currentState.tarifaAplicada = event.snapshotAfter.tarifaBaseMes;
+        const nuevaTarifa = event.snapshotAfter?.tarifaBaseMes ?? event.snapshotAfter?.tarifaAplicada;
+        if (nuevaTarifa !== undefined) {
+          currentState.tarifaAplicada = nuevaTarifa;
           functions.logger.info(
             `[recalculatePanelMonth] Tarifa actualizada a: ${currentState.tarifaAplicada}`
           );
@@ -246,10 +248,13 @@ export async function recalculatePanelMonth(
   currentImporte += calculateImporte(currentDiasFacturables, currentState.tarifaAplicada);
 
   currentState.totalDiasFacturables = currentDiasFacturables;
-  currentState.totalImporte = currentImporte;
+  
+  // Normalizar a 2 decimales para evitar basura decimal en Firestore
+  // Protege contra ajustes manuales con redondeo extraño (edge cases)
+  currentState.totalImporte = Math.round(currentImporte * 100) / 100;
 
   functions.logger.info(
-    `[recalculatePanelMonth] Resultado: ${currentDiasFacturables} días, ${currentImporte.toFixed(2)}€, estado: ${currentState.estadoAlCierre}`
+    `[recalculatePanelMonth] Resultado: ${currentDiasFacturables} días, ${currentState.totalImporte.toFixed(2)}€, estado: ${currentState.estadoAlCierre}`
   );
 
   // 4. Leer el panel para obtener datos denormalizados (código, municipio)

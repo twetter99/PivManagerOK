@@ -2,11 +2,25 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { assertIsEditorOrAdmin, getUserEmail, now } from "../lib/utils";
-import { PanelEventAction } from "../lib/schemas";
+import { PanelEventAction, PanelSnapshot } from "../lib/schemas";
 import { getPreviousMonthKey } from "../lib/billingRules";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { recalculatePanelMonth } from "../workers/recalculatePanelMonth";
+
+// Schema de validación para snapshots
+const PanelSnapshotSchema = z.object({
+  estadoActual: z.enum(["ACTIVO", "DESMONTADO", "BAJA"]).optional(),
+  estadoAlCierre: z.enum(["ACTIVO", "DESMONTADO", "BAJA"]).optional(),
+  tarifaBaseMes: z.number().positive().optional(),
+  tarifaAplicada: z.number().positive().optional(),
+  importeAjuste: z.number().optional(),
+  codigo: z.string().optional(),
+  municipio: z.string().optional(),
+  ubicacion: z.string().optional(),
+  diasFacturables: z.number().int().optional(),
+  totalImporte: z.number().optional(),
+}).passthrough();
 
 // Schema de validación para la solicitud de cambio de panel
 const RequestPanelChangeSchema = z.object({
@@ -17,8 +31,8 @@ const RequestPanelChangeSchema = z.object({
   diasFacturables: z.number().int().min(0).max(31),
   importeAFacturar: z.number().min(0),
   motivo: z.string().optional(),
-  snapshotBefore: z.object({}).passthrough(),
-  snapshotAfter: z.object({}).passthrough(),
+  snapshotBefore: PanelSnapshotSchema.nullable(),
+  snapshotAfter: PanelSnapshotSchema.nullable(),
 });
 
 type RequestPanelChangeData = z.infer<typeof RequestPanelChangeSchema>;

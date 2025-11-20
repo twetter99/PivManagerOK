@@ -2,7 +2,22 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { assertIsEditorOrAdmin, getUserEmail, now } from "../lib/utils";
+import { PanelSnapshot } from "../lib/schemas";
 import { z } from "zod";
+
+// Schema de validación para snapshots
+const PanelSnapshotSchema = z.object({
+  estadoActual: z.enum(["ACTIVO", "DESMONTADO", "BAJA"]).optional(),
+  estadoAlCierre: z.enum(["ACTIVO", "DESMONTADO", "BAJA"]).optional(),
+  tarifaBaseMes: z.number().positive().optional(),
+  tarifaAplicada: z.number().positive().optional(),
+  importeAjuste: z.number().optional(),
+  codigo: z.string().optional(),
+  municipio: z.string().optional(),
+  ubicacion: z.string().optional(),
+  diasFacturables: z.number().int().optional(),
+  totalImporte: z.number().optional(),
+}).passthrough();
 
 // Schema de validación para updatePanelEvent
 const UpdatePanelEventRequest = z.object({
@@ -12,9 +27,9 @@ const UpdatePanelEventRequest = z.object({
     motivo: z.string().optional(),
     diasFacturables: z.number().int().min(0).max(31).optional(),
     importeAFacturar: z.number().min(0).optional(),
-    // Permitir actualizar snapshots si es necesario
-    snapshotBefore: z.object({}).passthrough().optional(),
-    snapshotAfter: z.object({}).passthrough().optional(),
+    // Permitir actualizar snapshots si es necesario (tipados)
+    snapshotBefore: PanelSnapshotSchema.nullable().optional(),
+    snapshotAfter: PanelSnapshotSchema.nullable().optional(),
   }).refine(
     (data) => Object.keys(data).length > 0,
     "Debe proporcionar al menos un campo para actualizar"

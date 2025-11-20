@@ -6,7 +6,7 @@
 
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import { calculateBillableDays, getDayOfMonth } from "../lib/billingRules";
+import { calculateBillableDays, calculateImporte, getDayOfMonth } from "../lib/billingRules";
 import { getStandardRateForYear } from "../lib/rateService";
 import { recalculateSummary } from "../lib/summaryCalculations";
 
@@ -178,12 +178,12 @@ export const createPanel = functions
           `[createPanel] Código: ${codigoClean}, Municipio: ${municipioClean}, Fecha: ${fechaAlta}, Tarifa ${year}: ${standardRate}€`
         );
 
-        // 6. Cálculo de prorrateo (ALTA_INICIAL)
+        // 6. Cálculo de prorrateo (ALTA_INICIAL) con precisión contable
         const diasFacturables = calculateBillableDays("ALTA_INICIAL", dayOfMonth);
-        const importe = (diasFacturables / 30) * standardRate;
+        const importe = calculateImporte(diasFacturables, standardRate);
 
         functions.logger.info(
-          `[createPanel] Días facturables: ${diasFacturables}, Importe: ${importe.toFixed(2)}€`
+          `[createPanel] Días facturables: ${diasFacturables}, Importe: ${importe.toFixed(2)}€ (calculado con precisión en céntimos)`
         );
 
         // 7. Escritura atómica con batch
