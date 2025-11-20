@@ -13,6 +13,7 @@ export { toggleMonthLock } from "./admin/toggleMonthLock";
 export { deleteMonth } from "./admin/deleteMonth";
 export { resyncMonthFromPrevious } from "./admin/resyncMonthFromPrevious";
 export { updateYearlyRate } from "./admin/updateYearlyRate";
+export { createPanel } from "./admin/createPanel";
 export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
 export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
 export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";
@@ -26,6 +27,11 @@ export { verifyOctoberEvents } from "./commands/verifyOctoberEvents";
 // COMANDOS (Paso 3 - Patrón Asíncrono)
 // ============================================================================
 export { requestPanelChange } from "./commands/requestPanelChange";
+
+// ============================================================================
+// QUERIES (Lecturas optimizadas)
+// ============================================================================
+export { getUniqueLocations } from "./queries/getUniqueLocations";
 
 // ============================================================================
 // COMANDOS (Paso 6 - Gestión de Eventos)

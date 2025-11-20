@@ -6,8 +6,9 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import YearlyRatesManager from "./admin/YearlyRatesManager";
+import CreatePanelForm from "./admin/CreatePanelForm";
 
 interface AdminConsoleModalProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ interface AdminConsoleModalProps {
   onMonthClosed?: () => void;
 }
 
-type Tab = "general" | "monthly" | "maintenance" | "legacy";
+type Tab = "general" | "monthly" | "inventory" | "maintenance" | "legacy";
 
 export default function AdminConsoleModal({
   isOpen,
@@ -33,6 +34,7 @@ export default function AdminConsoleModal({
   const tabs = [
     { id: "general" as Tab, label: "🟢 General", color: "#52C41A" },
     { id: "monthly" as Tab, label: "🔵 Operaciones Mensuales", color: "#1890FF" },
+    { id: "inventory" as Tab, label: "📦 Inventario / Altas", color: "#722ED1" },
     { id: "maintenance" as Tab, label: "🟠 Mantenimiento", color: "#FA8C16" },
     { id: "legacy" as Tab, label: "⚪ Legacy / Dev", color: "#8C8C8C" },
   ];
@@ -154,6 +156,7 @@ export default function AdminConsoleModal({
               onMonthClosed={onMonthClosed}
             />
           )}
+          {activeTab === "inventory" && <InventoryTab monthKey={monthKey} />}
           {activeTab === "maintenance" && (
             <MaintenanceTab monthKey={monthKey} isLocked={isLocked} />
           )}
@@ -224,7 +227,96 @@ function MonthlyOpsTab({
 }
 
 /**
- * TAB 3: MANTENIMIENTO
+ * TAB 3: INVENTARIO / ALTAS
+ * Alta de paneles individuales
+ */
+function InventoryTab({ monthKey }: { monthKey: string }) {
+  const [rates, setRates] = useState<Array<{year: string; importe: number}>>([]);
+  const [existingLocations, setExistingLocations] = useState<string[]>([]);
+  const [loadingRates, setLoadingRates] = useState(true);
+  const [loadingLocations, setLoadingLocations] = useState(true);
+
+  useEffect(() => {
+    // Pequeño delay para asegurar que Firebase esté completamente inicializado
+    const timer = setTimeout(() => {
+      loadRates();
+      loadLocations();
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [monthKey]);
+
+  const loadRates = async () => {
+    try {
+      const { collection, query, orderBy, getDocs } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const ratesRef = collection(db, "rates");
+      const q = query(ratesRef, orderBy("year", "asc"));
+      const snapshot = await getDocs(q);
+
+      const loadedRates = snapshot.docs.map((doc) => ({
+        year: doc.id,
+        importe: doc.data().importe,
+      }));
+
+      setRates(loadedRates);
+    } catch (err) {
+      console.error("Error cargando tarifas:", err);
+    } finally {
+      setLoadingRates(false);
+    }
+  };
+
+  const loadLocations = async () => {
+    try {
+      const { functions } = await import("@/lib/firebase");
+      const { httpsCallable } = await import("firebase/functions");
+      
+      console.log("[InventoryTab] Llamando a getUniqueLocations...");
+      
+      // Llamar a la Cloud Function optimizada
+      const getUniqueLocationsFn = httpsCallable<
+        void,
+        { locations: string[] }
+      >(functions, "getUniqueLocations");
+      
+      const result = await getUniqueLocationsFn();
+      
+      console.log(`[InventoryTab] ✅ Ubicaciones recibidas: ${result.data.locations.length}`);
+      
+      setExistingLocations(result.data.locations);
+    } catch (err: any) {
+      console.error("[InventoryTab] ❌ Error cargando ubicaciones:", err);
+      console.error("[InventoryTab] Error code:", err.code);
+      console.error("[InventoryTab] Error message:", err.message);
+      
+      // Si falla, dejamos el array vacío (el usuario podrá escribir manualmente)
+      setExistingLocations([]);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
+
+  const isLoading = loadingRates || loadingLocations;
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center", color: "#8C8C8C" }}>
+        ⏳ Cargando datos...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <CreatePanelForm rates={rates} existingLocations={existingLocations} />
+    </div>
+  );
+}
+
+/**
+ * TAB 4: MANTENIMIENTO
  * Importar CSV, resincronizar mes
  */
 function MaintenanceTab({
