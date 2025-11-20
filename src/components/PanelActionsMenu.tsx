@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { requestPanelChange, deleteAllPanelEvents, waitForBillingUpdate } from "@/lib/api";
+import { requestPanelChange, deleteAllPanelEvents, waitForBillingUpdate, deletePanel } from "@/lib/api";
 
 interface PanelActionsMenuProps {
   panelId: string;
@@ -31,6 +31,7 @@ export default function PanelActionsMenu({
   const [showReinstalacionModal, setShowReinstalacionModal] = useState(false);
   const [showAjusteModal, setShowAjusteModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [showDeletePanelModal, setShowDeletePanelModal] = useState(false);
   const [deleteAllResult, setDeleteAllResult] = useState<
     | {
         totalDiasFacturables: number;
@@ -50,6 +51,7 @@ export default function PanelActionsMenu({
   const [fechaReinstalacion, setFechaReinstalacion] = useState("");
   const [fechaAjuste, setFechaAjuste] = useState("");
   const [importeAjuste, setImporteAjuste] = useState("");
+  const [confirmCode, setConfirmCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionCompleted, setActionCompleted] = useState(false);
@@ -202,6 +204,27 @@ export default function PanelActionsMenu({
       onSuccess?.();
     } catch (err: any) {
       setError(err.message || "Error al eliminar eventos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePanel = async () => {
+    if (!confirmCode || confirmCode !== codigo) {
+      setError(`Debes escribir "${codigo}" para confirmar la eliminación`);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await deletePanel({ panelId, confirmCode });
+      setActionCompleted(true);
+      alert(`✅ ${res.message}\n\nDetalles:\n- Eventos eliminados: ${res.details.eventsDeleted}\n- Documentos de facturación: ${res.details.billingDocsDeleted}\n- Meses afectados: ${res.details.affectedMonths.join(", ")}`);
+      setTimeout(() => { if (onSuccess) onSuccess(); }, 500);
+    } catch (err: any) {
+      setError(err.message || "Error al eliminar panel");
     } finally {
       setLoading(false);
     }
@@ -360,6 +383,32 @@ export default function PanelActionsMenu({
             }}
           >
             Dar de baja
+          </button>
+          <div style={{ borderTop: "1px solid #EAEAEA", margin: "4px 0" }} />
+          <button
+            onClick={() => {
+              setShowDeletePanelModal(true);
+              setShowMenu(false);
+            }}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              fontSize: "13px",
+              color: "#D32F2F",
+              backgroundColor: "transparent",
+              border: "none",
+              textAlign: "left",
+              cursor: "pointer",
+              fontWeight: "600",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#FFE5E5";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            🗑️ Eliminar panel completo
           </button>
         </div>
       )}
@@ -1082,6 +1131,161 @@ export default function PanelActionsMenu({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar panel completo */}
+      {showDeletePanelModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+          }}
+          onClick={() => {
+            if (!loading) {
+              setShowDeletePanelModal(false);
+              setError(null);
+              setConfirmCode("");
+              setActionCompleted(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFF",
+              padding: "24px",
+              borderRadius: "4px",
+              maxWidth: "500px",
+              width: "90%",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", color: "#D32F2F" }}>
+              ⚠️ Eliminar Panel Completo
+            </h3>
+            {!actionCompleted && (
+              <>
+                <div style={{ marginBottom: "16px", fontSize: "14px", lineHeight: "1.6" }}>
+                  <p style={{ margin: "0 0 12px 0", fontWeight: "600" }}>
+                    Esta acción es <strong>IRREVERSIBLE</strong> y eliminará:
+                  </p>
+                  <ul style={{ margin: "0 0 12px 0", paddingLeft: "20px" }}>
+                    <li>El panel <strong>{codigo}</strong> ({municipio})</li>
+                    <li>Todos los eventos del panel (subcolección panelEvents)</li>
+                    <li>Todos los registros de facturación mensual</li>
+                    <li>El candado de unicidad del código</li>
+                  </ul>
+                  <p style={{ margin: "0 0 12px 0", color: "#D32F2F", fontWeight: "600" }}>
+                    ⚠️ Los resúmenes mensuales (billingSummary) se recalcularán automáticamente
+                  </p>
+                  <p style={{ margin: "0", fontSize: "13px", color: "#666" }}>
+                    No se puede eliminar si hay meses bloqueados (isLocked: true)
+                  </p>
+                </div>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
+                    Para confirmar, escribe el código del panel: <span style={{ color: "#D32F2F" }}>{codigo}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmCode}
+                    onChange={(e) => setConfirmCode(e.target.value)}
+                    placeholder={`Escribe "${codigo}"`}
+                    disabled={loading}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      fontSize: "14px",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                {error && (
+                  <div
+                    style={{
+                      marginBottom: "16px",
+                      padding: "12px",
+                      backgroundColor: "#FFE5E5",
+                      color: "#D32F2F",
+                      borderRadius: "2px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {error}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => {
+                      setShowDeletePanelModal(false);
+                      setError(null);
+                      setConfirmCode("");
+                    }}
+                    disabled={loading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#595959",
+                      backgroundColor: "#FFF",
+                      border: "1px solid #D9D9D9",
+                      borderRadius: "2px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeletePanel}
+                    disabled={loading || !confirmCode}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#FFF",
+                      backgroundColor: loading || !confirmCode ? "#ccc" : "#D32F2F",
+                      border: "none",
+                      borderRadius: "2px",
+                      cursor: loading || !confirmCode ? "not-allowed" : "pointer",
+                      fontWeight: "600",
+                    }}
+                  >
+                    {loading ? "Eliminando..." : "🗑️ Eliminar Panel"}
+                  </button>
+                </div>
+              </>
+            )}
+            {actionCompleted && (
+              <button
+                onClick={() => {
+                  setActionCompleted(false);
+                  setShowDeletePanelModal(false);
+                  setConfirmCode("");
+                }}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  color: "#FFF",
+                  backgroundColor: "#4CAF50",
+                  border: "none",
+                  borderRadius: "2px",
+                  cursor: "pointer",
+                  width: "100%",
+                }}
+              >
+                ✅ Panel eliminado correctamente
+              </button>
+            )}
           </div>
         </div>
       )}

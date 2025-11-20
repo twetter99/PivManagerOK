@@ -159,9 +159,23 @@ export async function recalculatePanelMonth(
   let periodos: Array<{ inicio: number; fin: number }> = [];
   let ultimoCambio = 1; // Día donde empieza el período actual
 
-  functions.logger.info(
-    `[recalculatePanelMonth] Estado inicial heredado: ${estadoActual}`
-  );
+  // CASO ESPECIAL: Si hay un evento ALTA_INICIAL, el panel NO estaba activo antes
+  // Resetear estado a BAJA hasta que ocurra el ALTA_INICIAL
+  const hasAltaInicial = validEvents.some(doc => {
+    const data = doc.data() as PanelEventData;
+    return data.action === "ALTA_INICIAL";
+  });
+
+  if (hasAltaInicial) {
+    estadoActual = "BAJA"; // El panel NO estaba activo antes del ALTA_INICIAL
+    functions.logger.info(
+      `[recalculatePanelMonth] Detectado ALTA_INICIAL: Estado inicial ajustado a BAJA (panel no existía antes)`
+    );
+  } else {
+    functions.logger.info(
+      `[recalculatePanelMonth] Estado inicial heredado: ${estadoActual}`
+    );
+  }
 
   // Si el panel inicia el mes ACTIVO y no hay eventos, facturar todo el mes
   if (validEvents.length === 0) {
@@ -197,13 +211,17 @@ export async function recalculatePanelMonth(
           currentState.estadoAlCierre = "ACTIVO";
         }
       } else if (["DESMONTADO", "DESMONTAJE", "BAJA"].includes(event.action)) {
-        // Si estaba ACTIVO, facturar hasta este día (inclusive)
-        if (estadoActual === "ACTIVO" && ultimoCambio <= dayOfMonth) {
-          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth });
+        // Si estaba ACTIVO, facturar desde el inicio del período hasta el día ANTERIOR a la baja
+        // REGLA CRÍTICA: BAJA el día X NO factura el día X (solo factura hasta X-1)
+        // - ALTA día 10, BAJA día 10 → 0 días (mismo día, sin facturación)
+        // - ALTA día 10, BAJA día 11 → 1 día (solo el día 10)
+        // - ALTA día 10, BAJA día 12 → 2 días (días 10 y 11)
+        if (estadoActual === "ACTIVO" && ultimoCambio < dayOfMonth) {
+          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth - 1 });
         }
         // Cambiar a DESMONTADO/BAJA
         estadoActual = event.action === "BAJA" ? "BAJA" : "DESMONTADO";
-        ultimoCambio = dayOfMonth + 1; // Siguiente día ya no factura
+        ultimoCambio = dayOfMonth; // Ya no factura desde este día
         currentState.estadoAlCierre = estadoActual;
       } else if (event.action === "CAMBIO_TARIFA") {
         // Actualizar tarifa sin afectar períodos

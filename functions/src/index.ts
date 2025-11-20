@@ -6,6 +6,7 @@ admin.initializeApp();
 // ============================================================================
 // FUNCIONES DE ADMINISTRACIÓN (Paso 2)
 // ============================================================================
+export { bootstrapAdmin } from "./admin/bootstrapAdmin"; // ⚠️ Bootstrap: crear primer admin
 export { setUserRole } from "./admin/setUserRole";
 export { importBaseMonth } from "./admin/importBaseMonth";
 export { createNextMonth } from "./admin/createNextMonth";
@@ -14,6 +15,7 @@ export { deleteMonth } from "./admin/deleteMonth";
 export { resyncMonthFromPrevious } from "./admin/resyncMonthFromPrevious";
 export { updateYearlyRate } from "./admin/updateYearlyRate";
 export { createPanel } from "./admin/createPanel";
+export { deletePanel } from "./admin/deletePanel";
 export { regenerateMonthBilling } from "./commands/regenerateMonthBilling";
 export { cleanMonthDuplicates } from "./commands/cleanMonthDuplicates";
 export { diagnoseDuplicates } from "./commands/diagnoseDuplicates";

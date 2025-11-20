@@ -330,3 +330,26 @@ export async function resyncMonthFromPrevious(monthKey: string): Promise<{
   const result = await fn({ monthKey });
   return result.data;
 }
+
+/**
+ * Elimina completamente un panel y todos sus datos relacionados
+ * ATENCIÓN: Esta operación es IRREVERSIBLE
+ */
+export async function deletePanel(data: {
+  panelId: string;
+  confirmCode: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  details: {
+    panelId: string;
+    codigo: string;
+    eventsDeleted: number;
+    billingDocsDeleted: number;
+    affectedMonths: string[];
+  };
+}> {
+  const fn = callableFunction<typeof data, any>("deletePanel");
+  const result = await fn(data);
+  return result.data;
+}

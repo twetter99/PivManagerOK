@@ -201,10 +201,10 @@ export const createPanel = functions
         const panelRef = db.collection("panels").doc(panelId);
         batch.set(panelRef, {
           codigo: codigoClean,
-          municipio: municipioClean,
+          municipioId: municipioClean, // 👈 FIX: Usar municipioId en lugar de municipio (consistente con schema)
           ubicacion: municipioClean,
           tipo: "PIV",
-          estado: "ACTIVO",
+          estadoActual: "ACTIVO", // 👈 FIX: Usar estadoActual en lugar de estado (consistente con schema)
           fechaAlta: effectiveDate,
           tarifaActual: standardRate,
           createdAt: now,

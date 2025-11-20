@@ -116,15 +116,17 @@ export const createNextMonth = functions
     const BATCH_SIZE = 50; // Procesar 50 paneles a la vez
     const panelDocs = panelsSnapshot.docs;
     let processed = 0;
-    const errors: string[] = [];
+    let failed = 0;
+    const errors: Array<{ panelId: string; error: string }> = [];
 
     for (let i = 0; i < panelDocs.length; i += BATCH_SIZE) {
       const batch = panelDocs.slice(i, i + BATCH_SIZE);
       
       // Procesar batch en paralelo
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         batch.map(async (panelDoc) => {
           const panelId = panelDoc.id;
+          const panelData = panelDoc.data();
           try {
             await recalculatePanelMonth(panelId, newMonthKey);
             processed++;
@@ -135,21 +137,82 @@ export const createNextMonth = functions
                 `[createNextMonth] Progreso: ${processed}/${totalPanels} paneles procesados`
               );
             }
+            return { success: true, panelId };
           } catch (error) {
-            const errorMsg = `Panel ${panelId}: ${(error as Error).message}`;
-            errors.push(errorMsg);
+            failed++;
+            const errorMsg = (error as Error).message;
+            errors.push({ 
+              panelId, 
+              error: errorMsg 
+            });
             functions.logger.error(
-              `[createNextMonth] Error procesando panel ${panelId}:`,
-              error
+              `[createNextMonth] ❌ ERROR procesando panel ${panelId} (${panelData.codigo || "sin código"}):`,
+              errorMsg
             );
+            return { success: false, panelId, error: errorMsg };
           }
         })
       );
+
+      // Loguear fallos inmediatamente después de cada batch
+      const batchFailed = results.filter(r => r.status === "rejected" || (r.status === "fulfilled" && !(r.value as any).success));
+      if (batchFailed.length > 0) {
+        functions.logger.warn(
+          `[createNextMonth] ⚠️ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batchFailed.length} paneles fallaron`
+        );
+      }
     }
 
     functions.logger.info(
-      `[createNextMonth] Procesamiento completado: ${processed}/${totalPanels} paneles`
+      `[createNextMonth] Procesamiento completado: ${processed}/${totalPanels} éxitos, ${failed} fallos`
     );
+
+    // Advertencia visible si hay paneles faltantes
+    if (failed > 0) {
+      functions.logger.error(
+        `[createNextMonth] ⚠️⚠️⚠️ ADVERTENCIA: ${failed} paneles NO se procesaron correctamente:\n` +
+        errors.map(e => `  - ${e.panelId}: ${e.error}`).join("\n")
+      );
+
+      // RETRY: Intentar una segunda vez con los paneles que fallaron
+      functions.logger.info(
+        `[createNextMonth] 🔄 Intentando RETRY para ${failed} paneles fallidos...`
+      );
+
+      let retrySuccess = 0;
+      const retryErrors: Array<{ panelId: string; error: string }> = [];
+
+      for (const failedPanel of errors) {
+        try {
+          functions.logger.info(`[createNextMonth] RETRY: ${failedPanel.panelId}`);
+          await recalculatePanelMonth(failedPanel.panelId, newMonthKey);
+          retrySuccess++;
+          functions.logger.info(
+            `[createNextMonth] ✅ RETRY exitoso para ${failedPanel.panelId}`
+          );
+        } catch (retryError) {
+          retryErrors.push({
+            panelId: failedPanel.panelId,
+            error: (retryError as Error).message,
+          });
+          functions.logger.error(
+            `[createNextMonth] ❌ RETRY falló para ${failedPanel.panelId}:`,
+            retryError
+          );
+        }
+      }
+
+      if (retrySuccess > 0) {
+        functions.logger.info(
+          `[createNextMonth] ✅ RETRY completado: ${retrySuccess}/${failed} paneles recuperados`
+        );
+        processed += retrySuccess;
+        failed = retryErrors.length;
+        // Actualizar lista de errores solo con los que siguen fallando
+        errors.length = 0;
+        errors.push(...retryErrors);
+      }
+    }
 
     // 8. El billingSummary ya está actualizado por recalculatePanelMonth (llama a recalculateSummary)
     // Solo logueamos el resumen final
@@ -165,12 +228,33 @@ export const createNextMonth = functions
       `  - Paneles parciales: ${summaryData?.panelesParciales || 0}`
     );
 
+    // 9. Validar integridad: verificar que el número de paneles coincida
+    const finalBillingCount = await db
+      .collection("billingMonthlyPanel")
+      .where("monthKey", "==", newMonthKey)
+      .get();
+
+    const expectedCount = processed;
+    const actualCount = finalBillingCount.size;
+
+    if (actualCount < expectedCount) {
+      functions.logger.error(
+        `[createNextMonth] ⚠️ INCONSISTENCIA DETECTADA:\n` +
+        `  - Paneles procesados con éxito: ${expectedCount}\n` +
+        `  - Documentos en billingMonthlyPanel: ${actualCount}\n` +
+        `  - Diferencia: ${expectedCount - actualCount} documentos NO se crearon\n` +
+        `  Posible causa: Errores en recalculatePanelMonth que no se capturaron correctamente`
+      );
+    }
+
     return {
       success: true,
       monthKey: newMonthKey,
       previousMonthKey,
       panelsProcessed: processed,
+      panelsFailed: failed,
       totalPanels,
+      billingDocumentsCreated: actualCount,
       summary: {
         totalImporteMes: summaryData?.totalImporteMes || 0,
         totalPanelesFacturables: summaryData?.totalPanelesFacturables || 0,
@@ -178,5 +262,6 @@ export const createNextMonth = functions
         panelesParciales: summaryData?.panelesParciales || 0,
       },
       errors: errors.length > 0 ? errors : undefined,
+      warnings: failed > 0 ? [`${failed} paneles fallaron al procesarse. Revisa los logs para detalles.`] : undefined,
     };
   });
