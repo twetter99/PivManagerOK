@@ -37,6 +37,48 @@ export interface BillingMonthlyPanel {
   updatedAt: any;
 }
 
+export interface ExecutiveReport {
+  monthKey: string;
+  generatedAt: string;
+  
+  resumenFinanciero: {
+    totalFacturado: number;
+    totalPaneles: number;
+    panelesActivos: number;
+    panelesParciales: number;
+    panelesBaja: number;
+    importePromedio: number;
+  };
+  
+  actividadMes: {
+    altasNuevas: { cantidad: number; importeGenerado: number };
+    bajas: { cantidad: number; importePerdido: number };
+    desmontajes: { cantidad: number };
+    reinstalaciones: { cantidad: number };
+    ajustesManuales: { cantidad: number; importeTotal: number };
+  };
+  
+  topMunicipios: Array<{
+    nombre: string;
+    importe: number;
+    paneles: number;
+  }>;
+  
+  indicadoresCalidad: {
+    panelesCompletos: number;
+    panelesParciales: number;
+    panelesProblematicos: number;
+  };
+  
+  eventosDestacados: Array<{
+    fecha: string;
+    tipo: string;
+    panel: string;
+    municipio: string;
+    importe: number;
+  }>;
+}
+
 // ============================================================================
 // DASHBOARD - SUMMARY (KPIs)
 // ============================================================================
@@ -351,5 +393,14 @@ export async function deletePanel(data: {
 }> {
   const fn = callableFunction<typeof data, any>("deletePanel");
   const result = await fn(data);
+  return result.data;
+}
+
+/**
+ * Genera un informe ejecutivo financiero del mes
+ */
+export async function generateExecutiveReport(monthKey: string): Promise<ExecutiveReport> {
+  const fn = callableFunction<{ monthKey: string }, ExecutiveReport>("generateExecutiveReport");
+  const result = await fn({ monthKey });
   return result.data;
 }

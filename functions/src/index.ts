@@ -48,6 +48,11 @@ export { updatePanelEvent } from "./commands/updatePanelEvent";
 export { processPanelEventTask } from "./workers/processPanelEventTask";
 
 // ============================================================================
+// REPORTS (Informes Ejecutivos)
+// ============================================================================
+export { generateExecutiveReport } from "./reports/generateExecutiveReport";
+
+// ============================================================================
 // WORKERS (Paso 5 - Agregación de Totales)
 // ============================================================================
 export { updateSummaryTask } from "./workers/updateSummaryTask";
