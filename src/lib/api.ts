@@ -56,6 +56,7 @@ export interface ExecutiveReport {
     desmontajes: { cantidad: number };
     reinstalaciones: { cantidad: number };
     ajustesManuales: { cantidad: number; importeTotal: number };
+    intervenciones: { cantidad: number; importeTotal: number };
   };
   
   topMunicipios: Array<{
@@ -402,5 +403,26 @@ export async function deletePanel(data: {
 export async function generateExecutiveReport(monthKey: string): Promise<ExecutiveReport> {
   const fn = callableFunction<{ monthKey: string }, ExecutiveReport>("generateExecutiveReport");
   const result = await fn({ monthKey });
+  return result.data;
+}
+
+/**
+ * Registra una intervención puntual en un panel
+ * (reparación, vandalismo, instalación, mantenimiento, etc.)
+ */
+export async function createIntervencion(data: {
+  panelId: string;
+  effectiveDateLocal: string;
+  tipoIntervencion: "REPARACION" | "INSTALACION" | "MANTENIMIENTO" | "VANDALISMO" | "OTRO";
+  concepto: string;
+  importe: number;
+  evidenciaUrl?: string;
+}): Promise<{
+  status: string;
+  eventId: string;
+  idempotencyKey: string;
+}> {
+  const fn = callableFunction<typeof data, any>("createIntervencion");
+  const result = await fn(data);
   return result.data;
 }

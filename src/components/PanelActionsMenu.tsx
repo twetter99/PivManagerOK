@@ -22,8 +22,10 @@ import {
   DollarSign, 
   AlertTriangle, 
   Trash2,
-  MoreVertical
+  MoreVertical,
+  Wrench
 } from "lucide-react";
+import IntervencionModal from "./IntervencionModal";
 
 interface PanelActionsMenuProps {
   panelId: string;
@@ -48,6 +50,7 @@ export default function PanelActionsMenu({
   const [showDesmontadoModal, setShowDesmontadoModal] = useState(false);
   const [showReinstalacionModal, setShowReinstalacionModal] = useState(false);
   const [showAjusteModal, setShowAjusteModal] = useState(false);
+  const [showIntervencionModal, setShowIntervencionModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [showDeletePanelConfirmModal, setShowDeletePanelConfirmModal] = useState(false); // NUEVO: confirmación paso 1
   const [showDeletePanelModal, setShowDeletePanelModal] = useState(false);
@@ -425,6 +428,35 @@ export default function PanelActionsMenu({
             >
               <DollarSign size={16} style={{ flexShrink: 0 }} />
               <span>Ajuste manual</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowIntervencionModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#262626",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#F5F5F5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <Wrench size={16} style={{ flexShrink: 0 }} />
+              <span>Registrar intervención</span>
             </button>
           </div>
 
@@ -1708,6 +1740,20 @@ export default function PanelActionsMenu({
           </div>
         </div>
       )}
+
+      {/* Modal: Intervención */}
+      <IntervencionModal
+        isOpen={showIntervencionModal}
+        onClose={() => setShowIntervencionModal(false)}
+        panelId={panelId}
+        codigo={codigo}
+        municipio={municipio}
+        monthKey={monthKey}
+        onSuccess={() => {
+          setShowIntervencionModal(false);
+          onSuccess?.();
+        }}
+      />
     </div>
   );
 }

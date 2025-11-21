@@ -66,18 +66,13 @@ export default function ExecutiveReportModal({
       // Crear un nuevo libro de trabajo
       const workbook = XLSX.utils.book_new();
 
-      // Hoja 1: Resumen Financiero
-      const retencion = report.resumenFinanciero.totalFacturado * 0.04;
-      const importeNeto = report.resumenFinanciero.totalFacturado - retencion;
-      
+      // Hoja 1: Resumen Financiero (sin retenciones)
       const summaryData = [
         ["RESUMEN FINANCIERO"],
         ["Mes", getMonthName(report.monthKey)],
         [""],
         ["Concepto", "Importe (EUR)"],
         ["Total Facturado", formatEurosForExcel(report.resumenFinanciero.totalFacturado)],
-        ["Retención (-4%)", formatEurosForExcel(retencion)],
-        ["Importe Neto", formatEurosForExcel(importeNeto)],
         [""],
         ["Concepto", "Cantidad"],
         ["Total Paneles", report.resumenFinanciero.totalPaneles],

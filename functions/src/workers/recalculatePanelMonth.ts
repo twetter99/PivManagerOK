@@ -241,6 +241,28 @@ export async function recalculatePanelMonth(
             `[recalculatePanelMonth] Ajuste manual aplicado: ${event.snapshotAfter.importeAjuste}`
           );
         }
+      } else if (event.action === "INTERVENCION") {
+        // Intervención puntual: suma el importe sin afectar estado ni períodos
+        // Estas intervenciones son "stateless" y solo afectan a la facturación del mes actual
+        const importeIntervencion = event.snapshotAfter?.importeAjuste || 0;
+        currentImporte += importeIntervencion;
+        
+        // Log con detalles de la intervención para auditoría
+        const tipoIntervencion = (event as any).tipoIntervencion || "N/A";
+        const concepto = (event as any).concepto || "Sin descripción";
+        
+        functions.logger.info(
+          `[recalculatePanelMonth] Intervención aplicada: ${importeIntervencion}€ ` +
+          `(Tipo: ${tipoIntervencion}, Concepto: "${concepto}", Estado panel: ${estadoActual})`
+        );
+        
+        // Validación: advertir si la intervención ocurre en un panel inactivo
+        if (estadoActual === "BAJA" || estadoActual === "DESMONTADO") {
+          functions.logger.warn(
+            `[recalculatePanelMonth] ⚠️ Intervención registrada en panel con estado ${estadoActual} ` +
+            `(día ${dayOfMonth}). Verificar si es correcto.`
+          );
+        }
       }
     }
 

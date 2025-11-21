@@ -33,6 +33,7 @@ interface ExecutiveReport {
     desmontajes: { cantidad: number };
     reinstalaciones: { cantidad: number };
     ajustesManuales: { cantidad: number; importeTotal: number };
+    intervenciones: { cantidad: number; importeTotal: number };
   };
   
   topMunicipios: Array<{
@@ -183,6 +184,8 @@ export const generateExecutiveReport = functions
       let reinstalaciones = 0;
       let ajustesManuales = 0;
       let importeAjustes = 0;
+      let intervenciones = 0;
+      let importeIntervenciones = 0;
 
       const eventosDestacados: Array<{
         fecha: string;
@@ -312,6 +315,19 @@ export const generateExecutiveReport = functions
                   importe: ajuste,
                 });
                 break;
+              
+              case "INTERVENCION":
+                intervenciones++;
+                const importeIntervencion = event.snapshotAfter?.importeAjuste || 0;
+                importeIntervenciones += importeIntervencion;
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: `${event.action} - ${event.tipoIntervencion || 'N/A'}`,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: importeIntervencion,
+                });
+                break;
             }
           }
         }
@@ -353,6 +369,10 @@ export const generateExecutiveReport = functions
           ajustesManuales: {
             cantidad: ajustesManuales,
             importeTotal: Math.round(importeAjustes * 100) / 100,
+          },
+          intervenciones: {
+            cantidad: intervenciones,
+            importeTotal: Math.round(importeIntervenciones * 100) / 100,
           },
         },
         

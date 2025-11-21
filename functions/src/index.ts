@@ -29,6 +29,7 @@ export { verifyOctoberEvents } from "./commands/verifyOctoberEvents";
 // COMANDOS (Paso 3 - Patrón Asíncrono)
 // ============================================================================
 export { requestPanelChange } from "./commands/requestPanelChange";
+export { createIntervencion } from "./commands/createIntervencion";
 
 // ============================================================================
 // QUERIES (Lecturas optimizadas)
