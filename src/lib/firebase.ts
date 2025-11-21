@@ -8,7 +8,7 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { useState, useEffect } from "react";
 
 // Firebase configuration
@@ -65,13 +65,29 @@ export function useAuth(): UseAuthReturn {
         try {
           // Recuperar Custom Claims del token
           const tokenResult = await firebaseUser.getIdTokenResult();
+          let isAdmin = tokenResult.claims.admin === true;
+          
+          // Si NO es admin por Custom Claims, verificar Firestore
+          if (!isAdmin) {
+            try {
+              const userDocRef = doc(db, "users", firebaseUser.uid);
+              const userDoc = await getDoc(userDocRef);
+              
+              if (userDoc.exists() && userDoc.data()?.role === "admin") {
+                isAdmin = true;
+              }
+            } catch (firestoreError) {
+              console.error("Error verificando rol en Firestore:", firestoreError);
+              // Continuar sin marcar como admin si hay error
+            }
+          }
           
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             token: {
-              admin: tokenResult.claims.admin === true,
+              admin: isAdmin,
               editor: tokenResult.claims.editor === true,
             },
           });

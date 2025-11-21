@@ -9,7 +9,7 @@ import { assertIsAdmin } from "../lib/utils";
 export const findGetafePanel = functions
   .region("europe-west1")
   .https.onCall(async (data: unknown, context) => {
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     const db = admin.firestore();
     

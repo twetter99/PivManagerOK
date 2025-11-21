@@ -1,12 +1,29 @@
 /**
  * PanelActionsMenu Component
- * Menú de acciones para cada panel: editar tarifa, dar de baja
+ * Menú de acciones mejorado para cada panel con diseño profesional y UX optimizada
+ * 
+ * MEJORAS IMPLEMENTADAS:
+ * - Iconos de Lucide React para mejor identificación visual
+ * - Agrupación de acciones normales vs críticas
+ * - Confirmación en 2 pasos para "Dar de baja"
+ * - Animaciones sutiles en apertura y hover
+ * - Mayor espaciado y padding para mejor usabilidad
+ * - Estilos diferenciados para acciones peligrosas
  */
 
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { requestPanelChange, deleteAllPanelEvents, waitForBillingUpdate, deletePanel } from "@/lib/api";
+import { 
+  Calendar, 
+  Package, 
+  RotateCcw, 
+  DollarSign, 
+  AlertTriangle, 
+  Trash2,
+  MoreVertical
+} from "lucide-react";
 
 interface PanelActionsMenuProps {
   panelId: string;
@@ -26,11 +43,13 @@ export default function PanelActionsMenu({
   onSuccess,
 }: PanelActionsMenuProps) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showBajaConfirmModal, setShowBajaConfirmModal] = useState(false); // NUEVO: confirmación paso 1
   const [showBajaModal, setShowBajaModal] = useState(false);
   const [showDesmontadoModal, setShowDesmontadoModal] = useState(false);
   const [showReinstalacionModal, setShowReinstalacionModal] = useState(false);
   const [showAjusteModal, setShowAjusteModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [showDeletePanelConfirmModal, setShowDeletePanelConfirmModal] = useState(false); // NUEVO: confirmación paso 1
   const [showDeletePanelModal, setShowDeletePanelModal] = useState(false);
   const [deleteAllResult, setDeleteAllResult] = useState<
     | {
@@ -232,23 +251,35 @@ export default function PanelActionsMenu({
 
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
-      {/* Botón de acciones */}
+      {/* Botón de acciones mejorado con icono */}
       <button
         onClick={() => setShowMenu(!showMenu)}
         style={{
-          padding: "4px 8px",
+          padding: "6px 10px",
           fontSize: "12px",
           color: "#595959",
           backgroundColor: "transparent",
           border: "1px solid #D9D9D9",
-          borderRadius: "2px",
+          borderRadius: "4px",
           cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "#F5F5F5";
+          e.currentTarget.style.borderColor = "#BFBFBF";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.borderColor = "#D9D9D9";
         }}
       >
-        ⋯
+        <MoreVertical size={14} />
       </button>
 
-      {/* Menú desplegable */}
+      {/* Menú desplegable mejorado con animación */}
       {showMenu && (
         <div
           style={{
@@ -257,161 +288,549 @@ export default function PanelActionsMenu({
             top: "100%",
             marginTop: "4px",
             backgroundColor: "#FFF",
-            border: "1px solid #EAEAEA",
-            borderRadius: "2px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            border: "1px solid #E0E0E0",
+            borderRadius: "6px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
             zIndex: 9999,
-            minWidth: "150px",
+            minWidth: "260px",
+            animation: "slideDown 0.2s ease-out",
           }}
         >
-          <button
-            onClick={() => {
-              setShowDeleteAllModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#000",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F7F7F7";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            Eliminar eventos del mes
-          </button>
-          <button
-            onClick={() => {
-              setShowDesmontadoModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#000",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F7F7F7";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            Desmontar panel
-          </button>
-          <button
-            onClick={() => {
-              setShowReinstalacionModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#000",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F7F7F7";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            Reinstalar panel
-          </button>
-          <button
-            onClick={() => {
-              setShowAjusteModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#000",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F7F7F7";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            Ajuste manual
-          </button>
-          <button
-            onClick={() => {
-              setShowBajaModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#D32F2F",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#FFE5E5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            Dar de baja
-          </button>
-          <div style={{ borderTop: "1px solid #EAEAEA", margin: "4px 0" }} />
-          <button
-            onClick={() => {
-              setShowDeletePanelModal(true);
-              setShowMenu(false);
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              fontSize: "13px",
-              color: "#D32F2F",
-              backgroundColor: "transparent",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
+          <style>{`
+            @keyframes slideDown {
+              from {
+                opacity: 0;
+                transform: translateY(-8px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+          `}</style>
+          {/* Sección: Acciones normales */}
+          <div style={{ padding: "8px 0" }}>
+            <button
+              onClick={() => {
+                setShowDeleteAllModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#262626",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#F5F5F5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <Calendar size={16} style={{ flexShrink: 0 }} />
+              <span>Eliminar eventos del mes</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowDesmontadoModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#262626",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#F5F5F5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <Package size={16} style={{ flexShrink: 0 }} />
+              <span>Desmontar panel</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowReinstalacionModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#262626",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#F5F5F5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <RotateCcw size={16} style={{ flexShrink: 0 }} />
+              <span>Reinstalar panel</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowAjusteModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#262626",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#F5F5F5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <DollarSign size={16} style={{ flexShrink: 0 }} />
+              <span>Ajuste manual</span>
+            </button>
+          </div>
+
+          {/* Divisor y título de acciones críticas */}
+          <div style={{ 
+            borderTop: "2px solid #E0E0E0", 
+            margin: "8px 0",
+            padding: "8px 16px 4px",
+          }}>
+            <div style={{
+              fontSize: "11px",
               fontWeight: "600",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#FFE5E5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            🗑️ Eliminar panel completo
-          </button>
+              color: "#8C8C8C",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}>
+              ⚠️ Acciones Críticas
+            </div>
+          </div>
+
+          {/* Sección: Acciones críticas */}
+          <div style={{ padding: "4px 0 8px" }}>
+            <button
+              onClick={() => {
+                setShowBajaConfirmModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#C62828",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+                fontWeight: "500",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#FFEBEE";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+              <span>Dar de baja</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowDeletePanelConfirmModal(true);
+                setShowMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                color: "#C62828",
+                backgroundColor: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                transition: "all 0.15s ease",
+                fontWeight: "600",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#FFEBEE";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <Trash2 size={16} style={{ flexShrink: 0 }} />
+              <span>Eliminar panel completo</span>
+            </button>
+          </div>
         </div>
       )}
+
+      {/* NUEVO: Modal de confirmación para "Dar de baja" (Paso 1) */}
+      {showBajaConfirmModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+          onClick={() => setShowBajaConfirmModal(false)}
+        >
+          <style>{`
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+          `}</style>
+          <div
+            style={{
+              backgroundColor: "#FFF",
+              padding: "28px",
+              borderRadius: "8px",
+              maxWidth: "440px",
+              width: "90%",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", marginBottom: "20px" }}>
+              <div style={{ 
+                backgroundColor: "#FFF3E0", 
+                borderRadius: "50%", 
+                padding: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <AlertTriangle size={24} color="#F57C00" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", fontWeight: 600, color: "#262626" }}>
+                  ¿Dar de baja este panel?
+                </h3>
+                <p style={{ margin: "0", fontSize: "14px", color: "#595959", lineHeight: "1.5" }}>
+                  Esta acción marcará el panel como <strong>BAJA</strong> permanentemente a partir de la fecha que selecciones.
+                </p>
+              </div>
+            </div>
+            
+            <div style={{
+              backgroundColor: "#FAFAFA",
+              border: "1px solid #E8E8E8",
+              borderRadius: "6px",
+              padding: "12px 16px",
+              marginBottom: "24px",
+            }}>
+              <div style={{ fontSize: "13px", color: "#8C8C8C", marginBottom: "4px" }}>Panel:</div>
+              <div style={{ fontSize: "15px", fontWeight: 500, color: "#262626" }}>
+                {codigo} - {municipio}
+              </div>
+            </div>
+
+            {error && (
+              <div style={{
+                backgroundColor: "#FFF1F0",
+                border: "1px solid #FFCCC7",
+                borderRadius: "4px",
+                padding: "12px",
+                marginBottom: "16px",
+                color: "#CF1322",
+                fontSize: "13px",
+              }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  setError(null);
+                  setShowBajaConfirmModal(false);
+                }}
+                disabled={loading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "#595959",
+                  backgroundColor: "#FFF",
+                  border: "1px solid #D9D9D9",
+                  borderRadius: "6px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.6 : 1,
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#FAFAFA";
+                    e.currentTarget.style.borderColor = "#BFBFBF";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#FFF";
+                    e.currentTarget.style.borderColor = "#D9D9D9";
+                  }
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowBajaConfirmModal(false);
+                  setShowBajaModal(true);
+                }}
+                disabled={loading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#FFF",
+                  backgroundColor: "#D32F2F",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#B71C1C";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#D32F2F";
+                  }
+                }}
+              >
+                <AlertTriangle size={16} />
+                <span>Continuar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NUEVO: Modal de confirmación para "Eliminar panel completo" (Paso 1) */}
+      {showDeletePanelConfirmModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+          onClick={() => setShowDeletePanelConfirmModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFF",
+              padding: "28px",
+              borderRadius: "8px",
+              maxWidth: "440px",
+              width: "90%",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", marginBottom: "20px" }}>
+              <div style={{ 
+                backgroundColor: "#FFEBEE", 
+                borderRadius: "50%", 
+                padding: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <Trash2 size={24} color="#D32F2F" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", fontWeight: 600, color: "#262626" }}>
+                  ¿Eliminar panel completo?
+                </h3>
+                <p style={{ margin: "0", fontSize: "14px", color: "#595959", lineHeight: "1.5" }}>
+                  Esta acción es <strong>irreversible</strong>. Se eliminarán permanentemente:
+                </p>
+              </div>
+            </div>
+            
+            <ul style={{ 
+              margin: "0 0 20px 0", 
+              padding: "0 0 0 20px",
+              fontSize: "14px", 
+              color: "#595959",
+              lineHeight: "1.8",
+            }}>
+              <li>El panel y todos sus datos</li>
+              <li>Todos los eventos históricos</li>
+              <li>Todos los documentos de facturación</li>
+            </ul>
+
+            <div style={{
+              backgroundColor: "#FFF9E6",
+              border: "1px solid #FFE58F",
+              borderRadius: "6px",
+              padding: "12px 16px",
+              marginBottom: "24px",
+            }}>
+              <div style={{ fontSize: "13px", color: "#8C8C8C", marginBottom: "4px" }}>Panel a eliminar:</div>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#C62828" }}>
+                {codigo} - {municipio}
+              </div>
+            </div>
+
+            {error && (
+              <div style={{
+                backgroundColor: "#FFF1F0",
+                border: "1px solid #FFCCC7",
+                borderRadius: "4px",
+                padding: "12px",
+                marginBottom: "16px",
+                color: "#CF1322",
+                fontSize: "13px",
+              }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  setError(null);
+                  setShowDeletePanelConfirmModal(false);
+                }}
+                disabled={loading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "#595959",
+                  backgroundColor: "#FFF",
+                  border: "1px solid #D9D9D9",
+                  borderRadius: "6px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.6 : 1,
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#FAFAFA";
+                    e.currentTarget.style.borderColor = "#BFBFBF";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#FFF";
+                    e.currentTarget.style.borderColor = "#D9D9D9";
+                  }
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowDeletePanelConfirmModal(false);
+                  setShowDeletePanelModal(true);
+                }}
+                disabled={loading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#FFF",
+                  backgroundColor: "#D32F2F",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#B71C1C";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = "#D32F2F";
+                  }
+                }}
+              >
+                <Trash2 size={16} />
+                <span>Continuar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Eliminar todos los eventos del mes */}
       {showDeleteAllModal && (
         <div

@@ -211,17 +211,18 @@ export async function recalculatePanelMonth(
           currentState.estadoAlCierre = "ACTIVO";
         }
       } else if (["DESMONTADO", "DESMONTAJE", "BAJA"].includes(event.action)) {
-        // Si estaba ACTIVO, facturar desde el inicio del período hasta el día ANTERIOR a la baja
-        // REGLA CRÍTICA: BAJA el día X NO factura el día X (solo factura hasta X-1)
-        // - ALTA día 10, BAJA día 10 → 0 días (mismo día, sin facturación)
-        // - ALTA día 10, BAJA día 11 → 1 día (solo el día 10)
-        // - ALTA día 10, BAJA día 12 → 2 días (días 10 y 11)
-        if (estadoActual === "ACTIVO" && ultimoCambio < dayOfMonth) {
-          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth - 1 });
+        // Si estaba ACTIVO, facturar desde el inicio del período hasta el día del desmontaje (inclusive)
+        // REGLA CRÍTICA: DESMONTAJE/BAJA el día X SÍ factura el día X
+        // El panel se desmonta a las 23:59, por lo que el día completo debe facturarse
+        // - ALTA día 10, BAJA día 10 → 1 día (el día 10 completo)
+        // - ALTA día 10, BAJA día 11 → 2 días (días 10 y 11)
+        // - ALTA día 10, BAJA día 12 → 3 días (días 10, 11 y 12)
+        if (estadoActual === "ACTIVO" && ultimoCambio <= dayOfMonth) {
+          periodos.push({ inicio: ultimoCambio, fin: dayOfMonth });
         }
         // Cambiar a DESMONTADO/BAJA
         estadoActual = event.action === "BAJA" ? "BAJA" : "DESMONTADO";
-        ultimoCambio = dayOfMonth; // Ya no factura desde este día
+        ultimoCambio = dayOfMonth + 1; // Siguiente día ya no factura
         currentState.estadoAlCierre = estadoActual;
       } else if (event.action === "CAMBIO_TARIFA") {
         // Actualizar tarifa sin afectar períodos

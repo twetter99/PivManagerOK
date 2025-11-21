@@ -25,7 +25,7 @@ export const createNovemberTransitionEvents = functions
   })
   .https.onCall(async (data: unknown, context) => {
     // 1. Validar que el usuario sea admin
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     functions.logger.info("[createNovemberTransitionEvents] Iniciando creación de eventos de transición");
 

@@ -7,22 +7,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, functions } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "firebase/auth";
-import { httpsCallable } from "firebase/functions";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bootstrapLoading, setBootstrapLoading] = useState(false);
 
   useEffect(() => {
-    // Si ya está autenticado, redirigir al dashboard
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // TEMPORALMENTE COMENTADO: No redirigir automáticamente para poder usar el botón bootstrap
-        // router.push("/dashboard");
+        // Si ya está autenticado, redirigir al dashboard
+        router.push("/dashboard");
       }
     });
 
@@ -37,46 +34,11 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       console.log("✅ Login exitoso:", result.user.email);
-      // La redirección se manejará automáticamente por el useEffect (actualmente comentada)
-      setLoading(false);
+      // La redirección se hará automáticamente por el useEffect
     } catch (err: any) {
       console.error("Error al iniciar sesión:", err);
       setError(err.message || "Error al iniciar sesión con Google");
       setLoading(false);
-    }
-  };
-
-  const handleBootstrapAdmin = async () => {
-    setBootstrapLoading(true);
-    setError(null);
-
-    try {
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        setError("No hay usuario autenticado. Inicia sesión primero.");
-        setBootstrapLoading(false);
-        return;
-      }
-
-      const bootstrapAdminFunc = httpsCallable(functions, "bootstrapAdmin");
-      const result = await bootstrapAdminFunc({
-        targetUid: currentUser.uid,
-        targetEmail: currentUser.email || "unknown",
-      });
-
-      // @ts-ignore
-      alert(`✅ ÉXITO: ${result.data.message}\n\nYa eres administrador. Recarga la página para acceder al dashboard.`);
-      
-      // Opcional: Redirigir automáticamente después del bootstrap
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 2000);
-    } catch (err: any) {
-      console.error("Error al activar modo admin:", err);
-      setError(err.message || "Error al activar modo admin");
-    } finally {
-      setBootstrapLoading(false);
     }
   };
 
@@ -139,47 +101,6 @@ export default function LoginPage() {
         >
           {loading ? "Iniciando sesión..." : "Iniciar sesión con Google"}
         </button>
-
-        {/* BOTÓN DE RESCATE: Bootstrap Admin */}
-        {auth.currentUser && (
-          <div style={{ marginTop: "24px" }}>
-            <div
-              style={{
-                padding: "12px",
-                backgroundColor: "#FEF3C7",
-                border: "2px solid #F59E0B",
-                borderRadius: "8px",
-                marginBottom: "12px",
-                fontSize: "13px",
-                color: "#92400E",
-              }}
-            >
-              <strong>✅ Autenticado como:</strong> {auth.currentUser.email}
-              <br />
-              <span style={{ fontSize: "11px" }}>
-                UID: {auth.currentUser.uid.substring(0, 20)}...
-              </span>
-            </div>
-            <button
-              onClick={handleBootstrapAdmin}
-              disabled={bootstrapLoading}
-              style={{
-                width: "100%",
-                padding: "14px 24px",
-                backgroundColor: bootstrapLoading ? "#ccc" : "#DC2626",
-                color: "#fff",
-                border: "2px solid #B91C1C",
-                borderRadius: "8px",
-                fontSize: "15px",
-                fontWeight: 700,
-                cursor: bootstrapLoading ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              {bootstrapLoading ? "Activando..." : "🚨 ACTIVAR MODO ADMIN"}
-            </button>
-          </div>
-        )}
 
         {error && (
           <div

@@ -29,7 +29,7 @@ export const deleteMonthData = functions
     memory: "512MB",
   })
   .https.onCall(async (data: unknown, context) => {
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     const parseResult = DeleteMonthRequest.safeParse(data);
     if (!parseResult.success) {

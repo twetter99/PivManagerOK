@@ -59,7 +59,7 @@ export const requestPanelChange = functions
   })
   .https.onCall(async (data: unknown, context) => {
     // 1. Validar que el usuario sea editor o admin
-    assertIsEditorOrAdmin(context);
+    await assertIsEditorOrAdmin(context);
 
     const userEmail = getUserEmail(context);
     const timestamp = now();

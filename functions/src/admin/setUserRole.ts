@@ -28,7 +28,7 @@ export const setUserRole = functions
   .region("europe-west1") // Ajusta la región según tu proyecto
   .https.onCall(async (data: unknown, context) => {
     // 1. Validar que el llamante sea admin
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     // 2. Validar los datos de entrada con Zod
     const parseResult = SetUserRoleRequest.safeParse(data);

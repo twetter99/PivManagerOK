@@ -34,7 +34,7 @@ export const generateReport = functions
   })
   .https.onCall(async (data: unknown, context) => {
     // 1. Validar que el usuario sea admin
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     // 2. Validar el payload
     const parseResult = GenerateReportRequest.safeParse(data);

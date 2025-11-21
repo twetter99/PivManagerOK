@@ -33,7 +33,7 @@ export const cleanupDuplicatePanels = functions
     memory: "1GB",
   })
   .https.onCall(async (data: unknown, context) => {
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     const parseResult = CleanupRequest.safeParse(data);
     if (!parseResult.success) {

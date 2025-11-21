@@ -14,7 +14,7 @@ export const deleteAllPanelEvents = functions
   .runWith({ timeoutSeconds: 300, memory: "512MB" })
   .https.onCall(async (data: unknown, context) => {
     // 1) Authz
-    assertIsEditorOrAdmin(context);
+    await assertIsEditorOrAdmin(context);
     const userEmail = getUserEmail(context);
     const timestamp = now();
 

@@ -29,7 +29,7 @@ export const deleteMonth = functions
   })
   .https.onCall(async (data: unknown, context) => {
     // 1. Validar que el llamante sea admin
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     const userEmail = getUserEmail(context);
     const timestamp = now();

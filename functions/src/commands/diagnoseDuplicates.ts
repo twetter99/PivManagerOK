@@ -33,7 +33,7 @@ export const diagnoseDuplicates = functions
     memory: "512MB",
   })
   .https.onCall(async (data: unknown, context): Promise<DiagnosticResult> => {
-    assertIsAdmin(context);
+    await assertIsAdmin(context);
 
     const parseResult = DiagnosticRequest.safeParse(data);
     if (!parseResult.success) {
