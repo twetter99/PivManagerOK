@@ -198,6 +198,16 @@ export const generateExecutiveReport = functions
         uniquePanelIds.add(doc.data().panelId);
       });
 
+      // Cache para almacenar información de paneles y evitar lecturas duplicadas
+      const panelInfoCache = new Map<string, { codigo: string; municipio: string }>();
+      
+      // Cache para almacenar importes de facturación del mes
+      const billingCache = new Map<string, number>();
+      billingSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        billingCache.set(data.panelId, data.totalImporte || 0);
+      });
+
       // Leer eventos de cada panel (máximo 500 paneles, procesamos en lotes)
       const panelIdsArray = Array.from(uniquePanelIds);
       const BATCH_SIZE = 10; // Firestore permite hasta 10 queries paralelas
@@ -211,80 +221,99 @@ export const generateExecutiveReport = functions
             .collection("panelEvents")
             .where("monthKey", "==", monthKey)
             .get();
-          return eventsSnapshot.docs;
+          return { panelId, events: eventsSnapshot.docs };
         });
 
         const batchResults = await Promise.all(batchPromises);
-        const allEvents = batchResults.flat();
 
-        for (const eventDoc of allEvents) {
-          const event = eventDoc.data();
-          
-          // Ignorar eventos eliminados
-          if (event.isDeleted === true) continue;
+        for (const { panelId, events } of batchResults) {
+          // Obtener información del panel una sola vez (con caché)
+          if (!panelInfoCache.has(panelId)) {
+            const panelDoc = await db.collection("panels").doc(panelId).get();
+            if (panelDoc.exists) {
+              const panelData = panelDoc.data();
+              panelInfoCache.set(panelId, {
+                codigo: panelData?.codigo || "N/A",
+                municipio: panelData?.ubicacion || "N/A"
+              });
+            } else {
+              panelInfoCache.set(panelId, { codigo: "N/A", municipio: "N/A" });
+            }
+          }
 
-        switch (event.action) {
-          case "ALTA_INICIAL":
-          case "ALTA":
-            altasNuevas++;
-            importeAltasNuevas += event.importe || 0;
-            eventosDestacados.push({
-              fecha: event.effectiveDateLocal,
-              tipo: event.action,
-              panel: event.codigo || "N/A",
-              municipio: event.municipio || "N/A",
-              importe: event.importe || 0,
-            });
-            break;
-          
-          case "BAJA":
-            bajas++;
-            // Para bajas, el importe perdido está en el panel antes de la baja
-            eventosDestacados.push({
-              fecha: event.effectiveDateLocal,
-              tipo: event.action,
-              panel: event.codigo || "N/A",
-              municipio: event.municipio || "N/A",
-              importe: 0,
-            });
-            break;
-          
-          case "DESMONTADO":
-          case "DESMONTAJE":
-            desmontajes++;
-            eventosDestacados.push({
-              fecha: event.effectiveDateLocal,
-              tipo: event.action,
-              panel: event.codigo || "N/A",
-              municipio: event.municipio || "N/A",
-              importe: 0,
-            });
-            break;
-          
-          case "REINSTALACION":
-            reinstalaciones++;
-            eventosDestacados.push({
-              fecha: event.effectiveDateLocal,
-              tipo: event.action,
-              panel: event.codigo || "N/A",
-              municipio: event.municipio || "N/A",
-              importe: event.importe || 0,
-            });
-            break;
-          
-          case "AJUSTE_MANUAL":
-            ajustesManuales++;
-            const ajuste = event.snapshotAfter?.importeAjuste || 0;
-            importeAjustes += ajuste;
-            eventosDestacados.push({
-              fecha: event.effectiveDateLocal,
-              tipo: event.action,
-              panel: event.codigo || "N/A",
-              municipio: event.municipio || "N/A",
-              importe: ajuste,
-            });
-            break;
-        }
+          const panelInfo = panelInfoCache.get(panelId)!;
+
+          for (const eventDoc of events) {
+            const event = eventDoc.data();
+            
+            // Ignorar eventos eliminados
+            if (event.isDeleted === true) continue;
+
+            switch (event.action) {
+              case "ALTA_INICIAL":
+              case "ALTA":
+                altasNuevas++;
+                importeAltasNuevas += event.importe || 0;
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: event.action,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: event.importe || 0,
+                });
+                break;
+              
+              case "BAJA":
+                bajas++;
+                // Para bajas, el importe perdido está en el panel antes de la baja
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: event.action,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: 0,
+                });
+                break;
+              
+              case "DESMONTADO":
+              case "DESMONTAJE":
+                desmontajes++;
+                // Para desmontajes, mostrar el importe facturado hasta el desmontaje
+                const importeDesmontaje = billingCache.get(panelId) || 0;
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: event.action,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: importeDesmontaje,
+                });
+                break;
+              
+              case "REINSTALACION":
+                reinstalaciones++;
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: event.action,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: event.importe || 0,
+                });
+                break;
+              
+              case "AJUSTE_MANUAL":
+                ajustesManuales++;
+                const ajuste = event.snapshotAfter?.importeAjuste || 0;
+                importeAjustes += ajuste;
+                eventosDestacados.push({
+                  fecha: event.effectiveDateLocal,
+                  tipo: event.action,
+                  panel: panelInfo.codigo,
+                  municipio: panelInfo.municipio,
+                  importe: ajuste,
+                });
+                break;
+            }
+          }
         }
       }
 

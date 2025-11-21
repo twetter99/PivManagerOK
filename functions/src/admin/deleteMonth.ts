@@ -100,34 +100,44 @@ export const deleteMonth = functions
       functions.logger.info(`[deleteMonth] Último lote: ${deletedPanels} paneles eliminados`);
     }
 
-    // 6. Eliminar todos los panelEvents del mes
-    const eventsSnapshot = await db
-      .collection("panelEvents")
-      .where("monthKey", "==", monthKey)
-      .get();
+    // 6. Eliminar todos los panelEvents del mes (en subcolecciones)
+    // CORRECCIÓN: Los eventos están en panels/{panelId}/panelEvents, no en colección raíz
+    functions.logger.info(`[deleteMonth] Buscando eventos en subcolecciones panels/{panelId}/panelEvents`);
+    
+    const panelsSnapshot = await db.collection("panels").get();
+    
+    for (const panelDoc of panelsSnapshot.docs) {
+      const eventsSnapshot = await panelDoc.ref
+        .collection("panelEvents")
+        .where("monthKey", "==", monthKey)
+        .get();
 
-    functions.logger.info(`[deleteMonth] Eliminando ${eventsSnapshot.size} panelEvents`);
-
-    batch = db.batch();
-    opsInBatch = 0;
-
-    for (const doc of eventsSnapshot.docs) {
-      batch.delete(doc.ref);
-      deletedEvents++;
-      opsInBatch++;
-
-      if (opsInBatch >= BATCH_SIZE) {
-        await batch.commit();
-        functions.logger.info(`[deleteMonth] Lote completado: ${deletedEvents} eventos eliminados`);
+      if (eventsSnapshot.size > 0) {
+        functions.logger.info(`[deleteMonth] Panel ${panelDoc.id}: eliminando ${eventsSnapshot.size} eventos`);
+        
         batch = db.batch();
         opsInBatch = 0;
+
+        for (const eventDoc of eventsSnapshot.docs) {
+          batch.delete(eventDoc.ref);
+          deletedEvents++;
+          opsInBatch++;
+
+          if (opsInBatch >= BATCH_SIZE) {
+            await batch.commit();
+            functions.logger.info(`[deleteMonth] Lote completado: ${deletedEvents} eventos eliminados`);
+            batch = db.batch();
+            opsInBatch = 0;
+          }
+        }
+
+        if (opsInBatch > 0) {
+          await batch.commit();
+        }
       }
     }
 
-    if (opsInBatch > 0) {
-      await batch.commit();
-      functions.logger.info(`[deleteMonth] Último lote: ${deletedEvents} eventos eliminados`);
-    }
+    functions.logger.info(`[deleteMonth] Total eventos eliminados: ${deletedEvents}`);
 
     // 7. Eliminar el billingSummary
     await summaryRef.delete();
